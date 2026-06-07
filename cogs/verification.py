@@ -110,7 +110,7 @@ class Verification(commands.Cog):
         
         # Format message with blockquotes
         lines = message.split('\n')
-        formatted_lines = [f"> **{line.strip()}**" if line.strip() else "" for line in lines]
+        formatted_lines = [f"{line.strip()}" if line.strip() else "" for line in lines]
         body = ui.TextDisplay('\n'.join(formatted_lines))
         
         button = VerifyButton(label=btn_label, style=btn_style)

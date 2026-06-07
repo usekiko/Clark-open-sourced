@@ -542,8 +542,8 @@ MESSAGES:
         for t in tickets:
             status_emoji = {"open": "🟢", "claimed": "🔵", "escalated": "🔴"}.get(t['status'], "⚪")
             content += f"{status_emoji} **#{t['guild_ticket_number']:04d}** - {t['category']}\n"
-            content += f"> {t['subject'][:50]}...\n"
-            content += f"> Created: <t:{int(t['created_at'].timestamp())}:R>\n\n"
+            content += f"{t['subject'][:50]}...\n"
+            content += f"Created: <t:{int(t['created_at'].timestamp())}:R>\n\n"
         
         view = self._create_container_view("Your Tickets", content)
         await interaction.response.send_message(view=view, ephemeral=True)
@@ -616,7 +616,7 @@ MESSAGES:
         content += f"**Open:** {status_counts.get('open', 0)} | **Claimed:** {status_counts.get('claimed', 0)} | **Closed:** {status_counts.get('closed', 0)}\n\n"
         content += "**By Category:**\n"
         for cat in category_counts[:5]:
-            content += f"> {cat['category']}: {cat['count']}\n"
+            content += f"{cat['category']}: {cat['count']}\n"
         
         view = self._create_container_view("Ticket Analytics", content)
         await interaction.followup.send(view=view)

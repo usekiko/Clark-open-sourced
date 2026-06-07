@@ -72,8 +72,8 @@ class LayoutDemo(commands.Cog):
         
         body = (
             "**Portfolio Analysis**\n"
-            "> **Wallet:** 1,250 ✦\n"
-            "> **Bank:** 45,000 ✦\n\n"
+            "Wallet:** 1,250 ✦\n"
+            "Bank:** 45,000 ✦\n\n"
             "**Total Balance:** 46,250 Credits"
         )
         

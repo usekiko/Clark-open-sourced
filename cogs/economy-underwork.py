@@ -104,8 +104,8 @@ class Economy(commands.Cog):
         
         desc = (
             f"**Portfolio Analysis**\n"
-            f"> **Wallet:** {data['wallet']:,} {cfg['currency_symbol']}\n"
-            f"> **Bank:** {data['bank']:,} {cfg['currency_symbol']}\n\n"
+            f"Wallet:** {data['wallet']:,} {cfg['currency_symbol']}\n"
+            f"Bank:** {data['bank']:,} {cfg['currency_symbol']}\n\n"
             f"**Total Balance:** {data['wallet'] + data['bank']:,} {cfg['currency_name']}"
         )
         
@@ -121,14 +121,14 @@ class Economy(commands.Cog):
         now = int(time.time())
         if now < data['last_daily'] + 86400:
             rem = (data['last_daily'] + 86400) - now
-            desc = f"> **The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m.**"
+            desc = f"The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m."
             view = self._create_styled_container("INFO", "Stipend Locked", desc)
             return await interaction.followup.send(view=view)
 
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_daily = $2 WHERE guild_id = $3 AND user_id = $4", cfg['daily_amount'], now, interaction.guild.id, interaction.user.id)
         
-        desc = f"> **Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.**"
+        desc = f"Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury."
         view = self._create_styled_container("SUCCESS", "Daily Stipend", desc)
         await interaction.followup.send(view=view)
 
@@ -145,7 +145,7 @@ class Economy(commands.Cog):
             
             if now < last_work + cooldown_sec:
                 rem = (last_work + cooldown_sec) - now
-                desc = f"> **Wait {rem//60}m {rem%60}s before your next shift.**"
+                desc = f"Wait {rem//60}m {rem%60}s before your next shift."
                 view = self._create_styled_container("INFO", "Exhausted", desc)
                 return await interaction.followup.send(view=view)
 
@@ -154,7 +154,7 @@ class Economy(commands.Cog):
                 await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_work = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
             
             jobs = ["Virtual Real Estate Agent", "AI Ethicist", "Professional Meme Curator", "Lead Developer"]
-            desc = f"> **Worked as a {random.choice(jobs)} and earned {gain:,} {cfg['currency_symbol']}.**"
+            desc = f"Worked as a {random.choice(jobs)} and earned {gain:,} {cfg['currency_symbol']}."
             view = self._create_styled_container("SUCCESS", "Shift Ended", desc)
             await interaction.followup.send(view=view)
         except Exception as e:
@@ -171,14 +171,14 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['stream_cooldown'] * 60
         if now < data['last_stream'] + cooldown_sec:
             rem = (data['last_stream'] + cooldown_sec) - now
-            desc = f"> **Wait {rem//60}m {rem%60}s to stream again.**"
+            desc = f"Wait {rem//60}m {rem%60}s to stream again."
             view = self._create_styled_container("INFO", "Offline", desc)
             return await interaction.followup.send(view=view)
 
         gain = random.randint(cfg['stream_min'], cfg['stream_max'])
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_stream = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
-        desc = f"> **Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.**"
+        desc = f"Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations."
         view = self._create_styled_container("SUCCESS", "Stream Ended", desc)
         await interaction.followup.send(view=view)
 
@@ -192,14 +192,14 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['hunt_cooldown'] * 60
         if now < data['last_hunt'] + cooldown_sec:
             rem = (data['last_hunt'] + cooldown_sec) - now
-            desc = f"> **The forest is empty. Wait {rem//60}m {rem%60}s.**"
+            desc = f"The forest is empty. Wait {rem//60}m {rem%60}s."
             view = self._create_styled_container("INFO", "Forest Restock", desc)
             return await interaction.followup.send(view=view)
 
         gain = random.randint(cfg['hunt_min'], cfg['hunt_max'])
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_hunt = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
-        desc = f"> **Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!**"
+        desc = f"Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!"
         view = self._create_styled_container("SUCCESS", "Hunt Conclusion", desc)
         await interaction.followup.send(view=view)
 
@@ -213,14 +213,14 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['scavenge_cooldown'] * 60
         if now < data['last_scavenge'] + cooldown_sec:
             rem = (data['last_scavenge'] + cooldown_sec) - now
-            desc = f"> **Wait {rem//60}m {rem%60}s for new salvage.**"
+            desc = f"Wait {rem//60}m {rem%60}s for new salvage."
             view = self._create_styled_container("INFO", "Yard Empty", desc)
             return await interaction.followup.send(view=view)
 
         gain = random.randint(cfg['scavenge_min'], cfg['scavenge_max'])
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_scavenge = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
-        desc = f"> **Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!**"
+        desc = f"Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!"
         view = self._create_styled_container("SUCCESS", "Scavenge Results", desc)
         await interaction.followup.send(view=view)
 
@@ -234,7 +234,7 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['slut_cooldown'] * 60
         if now < data['last_slut'] + cooldown_sec:
             rem = (data['last_slut'] + cooldown_sec) - now
-            desc = f"> **Wait {rem//60}m {rem%60}s for the heat to die down.**"
+            desc = f"Wait {rem//60}m {rem%60}s for the heat to die down."
             view = self._create_styled_container("INFO", "Street Heat", desc)
             return await interaction.followup.send(view=view)
 
@@ -242,13 +242,13 @@ class Economy(commands.Cog):
             loss = random.randint(200, 600)
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("UPDATE economy_users SET wallet = wallet - $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4", loss, now, interaction.guild.id, interaction.user.id)
-            desc = f"> **Authorities intercepted the hustle. Fined {loss:,} {cfg['currency_symbol']}.**"
+            desc = f"Authorities intercepted the hustle. Fined {loss:,} {cfg['currency_symbol']}."
             view = self._create_styled_container("ERROR", "Intercepted", desc)
         else:
             gain = random.randint(cfg['slut_min'], cfg['slut_max'])
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
-            desc = f"> **The hustle was successful. Earned {gain:,} {cfg['currency_symbol']}!**"
+            desc = f"The hustle was successful. Earned {gain:,} {cfg['currency_symbol']}!"
             view = self._create_styled_container("SUCCESS", "Hustle Paid", desc)
         await interaction.followup.send(view=view)
 
@@ -257,7 +257,7 @@ class Economy(commands.Cog):
         await interaction.response.defer()
         cfg = await self.get_config(interaction.guild.id)
         if target.id == interaction.user.id: 
-            desc = "> **Self-robbery is prohibited.**"
+            desc = "Self-robbery is prohibited."
             view = self._create_styled_container("ERROR", "Constraint Error", desc)
             return await interaction.followup.send(view=view)
             
@@ -265,13 +265,13 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['rob_cooldown'] * 60
         if now < data['last_rob'] + cooldown_sec:
             rem = (data['last_rob'] + cooldown_sec) - now
-            desc = f"> **Wait {rem//60}m {rem%60}s before your next attempt.**"
+            desc = f"Wait {rem//60}m {rem%60}s before your next attempt."
             view = self._create_styled_container("INFO", "Surveillance", desc)
             return await interaction.followup.send(view=view)
 
         vic = await self._get_user_data(interaction.guild.id, target.id)
         if vic['wallet'] < cfg['rob_min_wallet']: 
-            desc = f"> **Target wallet is below the threshold (Min {cfg['rob_min_wallet']} required).**"
+            desc = f"Target wallet is below the threshold (Min {cfg['rob_min_wallet']} required)."
             view = self._create_styled_container("INFO", "Poor Target", desc)
             return await interaction.followup.send(view=view)
 
@@ -279,14 +279,14 @@ class Economy(commands.Cog):
             fine = random.randint(400, 1000)
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("UPDATE economy_users SET wallet = wallet - $1, last_rob = $2 WHERE guild_id = $3 AND user_id = $4", fine, now, interaction.guild.id, interaction.user.id)
-            desc = f"> **Heist blown! You were caught and paid {fine} {cfg['currency_symbol']} in legal fees.**"
+            desc = f"Heist blown! You were caught and paid {fine} {cfg['currency_symbol']} in legal fees."
             view = self._create_styled_container("ERROR", "Heist Failed", desc)
         else:
             stolen = random.randint(100, int(vic['wallet'] * 0.45))
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_rob = $2 WHERE guild_id = $3 AND user_id = $4", stolen, now, interaction.guild.id, interaction.user.id)
                 await conn.execute("UPDATE economy_users SET wallet = wallet - $1 WHERE guild_id = $2 AND user_id = $3", stolen, interaction.guild.id, target.id)
-            desc = f"> **Successful heist! Snatched {stolen:,} {cfg['currency_symbol']} from {target.mention}!**"
+            desc = f"Successful heist! Snatched {stolen:,} {cfg['currency_symbol']} from {target.mention}!"
             view = self._create_styled_container("SUCCESS", "Clean Job", desc)
         await interaction.followup.send(view=view)
 
@@ -297,16 +297,16 @@ class Economy(commands.Cog):
         data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         try: amt = data['wallet'] if amount.lower() == 'all' else int(amount)
         except: 
-            view = self._create_styled_container("ERROR", "Input Error", "> **Numeric input or 'all' is required.**")
+            view = self._create_styled_container("ERROR", "Input Error", "Numeric input or 'all' is required.")
             return await interaction.followup.send(view=view)
             
         if amt <= 0 or data['wallet'] < amt: 
-            view = self._create_styled_container("ERROR", "Insufficient Funds", "> **You do not have enough liquid funds to deposit.**")
+            view = self._create_styled_container("ERROR", "Insufficient Funds", "You do not have enough liquid funds to deposit.")
             return await interaction.followup.send(view=view)
             
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet - $1, bank = bank + $2 WHERE guild_id = $3 AND user_id = $4", amt, amt, interaction.guild.id, interaction.user.id)
-        desc = f"> **Stored {amt:,} {cfg['currency_symbol']} in the vault security system.**"
+        desc = f"Stored {amt:,} {cfg['currency_symbol']} in the vault security system."
         await interaction.followup.send(view=self._create_styled_container("SUCCESS", "Vault Deposit", desc))
 
     @app_commands.command(name="withdraw", description="Release currency from vault.")
@@ -316,16 +316,16 @@ class Economy(commands.Cog):
         data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         try: amt = data['bank'] if amount.lower() == 'all' else int(amount)
         except: 
-            view = self._create_styled_container("ERROR", "Input Error", "> **Numeric input or 'all' is required.**")
+            view = self._create_styled_container("ERROR", "Input Error", "Numeric input or 'all' is required.")
             return await interaction.followup.send(view=view)
             
         if amt <= 0 or data['bank'] < amt: 
-            view = self._create_styled_container("ERROR", "Insufficient Funds", "> **You do not have enough vault balance to withdraw.**")
+            view = self._create_styled_container("ERROR", "Insufficient Funds", "You do not have enough vault balance to withdraw.")
             return await interaction.followup.send(view=view)
             
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("UPDATE economy_users SET wallet = wallet + $1, bank = bank - $2 WHERE guild_id = $3 AND user_id = $4", amt, amt, interaction.guild.id, interaction.user.id)
-        desc = f"> **Released {amt:,} {cfg['currency_symbol']} into your active wallet.**"
+        desc = f"Released {amt:,} {cfg['currency_symbol']} into your active wallet."
         await interaction.followup.send(view=self._create_styled_container("SUCCESS", "Vault Withdrawal", desc))
 
     @app_commands.command(name="pay", description="Transfer currency to another user.")
@@ -334,24 +334,24 @@ class Economy(commands.Cog):
         cfg = await self.get_config(interaction.guild.id)
         
         if member.id == interaction.user.id:
-            desc = "> **You cannot transfer currency to yourself.**"
+            desc = "You cannot transfer currency to yourself."
             view = self._create_styled_container("ERROR", "Invalid Transfer", desc)
             return await interaction.followup.send(view=view)
         
         if member.bot:
-            desc = "> **You cannot transfer currency to bots.**"
+            desc = "You cannot transfer currency to bots."
             view = self._create_styled_container("ERROR", "Invalid Recipient", desc)
             return await interaction.followup.send(view=view)
         
         if amount <= 0:
-            desc = "> **Amount must be greater than 0.**"
+            desc = "Amount must be greater than 0."
             view = self._create_styled_container("ERROR", "Invalid Amount", desc)
             return await interaction.followup.send(view=view)
         
         sender_data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         
         if sender_data['wallet'] < amount:
-            desc = f"> **You do not have enough {cfg['currency_name']} in your wallet.**"
+            desc = f"You do not have enough {cfg['currency_name']} in your wallet."
             view = self._create_styled_container("ERROR", "Insufficient Funds", desc)
             return await interaction.followup.send(view=view)
         
@@ -370,7 +370,7 @@ class Economy(commands.Cog):
                 amount, interaction.guild.id, member.id
             )
         
-        desc = f"> **Transferred {amount:,} {cfg['currency_symbol']} to {member.mention}.**"
+        desc = f"Transferred {amount:,} {cfg['currency_symbol']} to {member.mention}."
         view = self._create_styled_container("SUCCESS", "Transfer Complete", desc)
         await interaction.followup.send(view=view)
 
@@ -379,11 +379,11 @@ class Economy(commands.Cog):
         await interaction.response.defer()
         cfg = await self.get_config(interaction.guild.id)
         if bet < 50: 
-            return await interaction.followup.send(view=self._create_styled_container("ERROR", "Min Bet", f"> **Minimum bet is 50 {cfg['currency_name']}.**"))
+            return await interaction.followup.send(view=self._create_styled_container("ERROR", "Min Bet", f"Minimum bet is 50 {cfg['currency_name']}."))
             
         data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         if data['wallet'] < bet: 
-            return await interaction.followup.send(view=self._create_styled_container("ERROR", "Insufficient Funds", "> **Wallet balance too low for this bet.**"))
+            return await interaction.followup.send(view=self._create_styled_container("ERROR", "Insufficient Funds", "Wallet balance too low for this bet."))
         
         icons = ["<:diamond:1470522339958460591>", "<:cherry:1470522699364171879>", "<:ticket:1470523139229483151>", "<:gold:1470522343267766373>", "<:emerald:1470522362003718348>", "<:quartz:1470522360212750572>"]
         fail_rate = cfg.get('slots_fail_rate', 35)
@@ -415,7 +415,7 @@ class Economy(commands.Cog):
         
         desc = (
             f"**Spin Results**\n"
-            f"> **[ {r[0]} | {r[1]} | {r[2]} ]**\n\n"
+            f"[ {r[0]} | {r[1]} | {r[2]} ]**\n\n"
             f"**{msg}**"
         )
         await interaction.followup.send(view=self._create_styled_container(status, "Slot Machine", desc, user=interaction.user))
@@ -468,7 +468,7 @@ class Economy(commands.Cog):
                 await conn.execute(f"UPDATE economy_settings SET {', '.join(updates)} WHERE guild_id = $1", *params)
                 
         self._settings_cache.pop(interaction.guild.id, None)
-        desc = "> **Changes applied!**"
+        desc = "Changes applied!"
         view = self._create_styled_container("SUCCESS", "System Configured", desc)
         await interaction.followup.send(view=view, ephemeral=True)
 
@@ -477,7 +477,7 @@ class Economy(commands.Cog):
         await self.setup_database()
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        desc = f"> **{str(error)}**"
+        desc = f"{str(error)}"
         view = self._create_styled_container("ERROR", "Constraint Error", desc)
         if not interaction.response.is_done(): 
             await interaction.response.send_message(view=view, ephemeral=True)

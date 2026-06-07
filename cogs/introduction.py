@@ -134,16 +134,16 @@ class ExampleCog(commands.Cog):
             
             quick_start_header = ui.TextDisplay("**Quick Start**")
             quick_start_body = ui.TextDisplay(
-                "> Use </clark mode:0> to change AI personality\n"
-                "> Use </level config:0> to enable leveling\n"
-                "> Use </help:0> to see all commands"
+                "Use </clark mode:0> to change AI personality\n"
+                "Use </level config:0> to enable leveling\n"
+                "Use </help:0> to see all commands"
             )
             
             important_header = ui.TextDisplay("**Important**")
-            important_body = ui.TextDisplay("> Make sure I have a role **higher** than the roles you want me to manage!")
+            important_body = ui.TextDisplay("Make sure I have a role **higher** than the roles you want me to manage!")
             
             help_header = ui.TextDisplay("**Need Help?**")
-            help_body = ui.TextDisplay("> Use </help:0> in your server or join our support server.")
+            help_body = ui.TextDisplay("Use </help:0> in your server or join our support server.")
             
             container = ui.Container(
                 header, sep, greeting, 

@@ -136,9 +136,9 @@ class Logging(commands.Cog):
                         log_channel_id = EXCLUDED.log_channel_id, enabled_events = EXCLUDED.enabled_events;
                     """, interaction.guild_id, log_channel.id, json.dumps(selected_events))
                 
-                enabled_events_str = "\n".join([f"> {LOGGABLE_EVENTS[e]}" for e in selected_events])
+                enabled_events_str = "\n".join([f"{LOGGABLE_EVENTS[e]}" for e in selected_events])
                 description = (
-                    f"> Channel: {log_channel.mention}\n\n"
+                    f"Channel: {log_channel.mention}\n\n"
                     f"**Enabled Events**\n"
                     f"{enabled_events_str}"
                 )
@@ -147,7 +147,7 @@ class Logging(commands.Cog):
                 await interaction.response.edit_message(content=None, view=response_view)
             except Exception as e:
                 print(f"{Colors.RED}[ERROR]        Error in logging select_callback. [Error]: {e}{Colors.RESET}")
-                error_view = self._create_styled_view("ERROR", "Configuration Failed", "> Database error occurred.")
+                error_view = self._create_styled_view("ERROR", "Configuration Failed", "Database error occurred.")
                 await interaction.response.edit_message(content=None, view=error_view)
 
 
@@ -176,9 +176,9 @@ class Logging(commands.Cog):
             rows_affected = int(status.split()[-1])
 
         if rows_affected == 0:
-            response_view = self._create_styled_view("ERROR", "Not Configured", "> Logging is not enabled on this server.")
+            response_view = self._create_styled_view("ERROR", "Not Configured", "Logging is not enabled on this server.")
         else:
-            response_view = self._create_styled_view("SUCCESS", "Logging Disabled", "> Event logging has been turned off.")
+            response_view = self._create_styled_view("SUCCESS", "Logging Disabled", "Event logging has been turned off.")
         
         await interaction.response.send_message(view=response_view, ephemeral=True)
 
@@ -186,11 +186,11 @@ class Logging(commands.Cog):
     @log_disable.error
     async def on_log_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
-            description = "> Manage Guild permission required."
+            description = "Manage Guild permission required."
             title = "Access Denied"
         else:
             print(f"{Colors.RED}[ERROR]        Error in logging app command. [Error]: {error}{Colors.RESET}")
-            description = "> An unexpected error occurred."
+            description = "An unexpected error occurred."
             title = "Error"
         
         error_view = self._create_styled_view("ERROR", title, description)
@@ -210,9 +210,9 @@ class Logging(commands.Cog):
         if message.attachments: content += f"\n*(+ {len(message.attachments)} attachment(s))*"
         
         description = (
-            f"> **Author:** {message.author.mention}\n"
-            f"> **Channel:** {message.channel.mention}\n"
-            f"> **Deleted by:** {actor_str}\n\n"
+            f"Author:** {message.author.mention}\n"
+            f"Channel:** {message.channel.mention}\n"
+            f"Deleted by:** {actor_str}\n\n"
             f"{content}"
         )
         await self._send_log_message(message.guild.id, "message_delete", "SUCCESS", "Message Deleted", description)
@@ -228,9 +228,9 @@ class Logging(commands.Cog):
         if len(after_content) > 500: after_content = after_content[:500] + "..."
         
         description = (
-            f"> **Author:** {after.author.mention}\n"
-            f"> **Channel:** {after.channel.mention}\n"
-            f"> **Link:** [Jump to Message]({after.jump_url})\n\n"
+            f"Author:** {after.author.mention}\n"
+            f"Channel:** {after.channel.mention}\n"
+            f"Link:** [Jump to Message]({after.jump_url})\n\n"
             f"**Before**\n{before_content}\n\n"
             f"**After**\n{after_content}"
         )
@@ -242,8 +242,8 @@ class Logging(commands.Cog):
         relative = discord.utils.format_dt(member.created_at, style='R')
         
         description = (
-            f"> **User:** {member.mention}\n"
-            f"> **Created:** {created_at_ts} ({relative})\n\n"
+            f"User:** {member.mention}\n"
+            f"Created:** {created_at_ts} ({relative})\n\n"
             f"Server Members: {member.guild.member_count}"
         )
         await self._send_log_message(member.guild.id, "member_join", "SUCCESS", "Member Joined", description)
@@ -254,9 +254,9 @@ class Logging(commands.Cog):
         action_str = f"Kicked by {actor.mention}" if actor else "Left the server"
         
         description = (
-            f"> **User:** {member.mention}\n"
-            f"> **ID:** {member.id}\n"
-            f"> **Action:** {action_str}\n\n"
+            f"User:** {member.mention}\n"
+            f"ID:** {member.id}\n"
+            f"Action:** {action_str}\n\n"
             f"Server Members: {member.guild.member_count}"
         )
         await self._send_log_message(member.guild.id, "member_remove", "SUCCESS", "Member Left", description)
@@ -267,9 +267,9 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **User:** {user.mention}\n"
-            f"> **ID:** {user.id}\n"
-            f"> **Banned by:** {actor_str}"
+            f"User:** {user.mention}\n"
+            f"ID:** {user.id}\n"
+            f"Banned by:** {actor_str}"
         )
         await self._send_log_message(guild.id, "member_ban", "SUCCESS", "Member Banned", description)
 
@@ -279,9 +279,9 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **User:** {user.mention}\n"
-            f"> **ID:** {user.id}\n"
-            f"> **Unbanned by:** {actor_str}"
+            f"User:** {user.mention}\n"
+            f"ID:** {user.id}\n"
+            f"Unbanned by:** {actor_str}"
         )
         await self._send_log_message(guild.id, "member_unban", "SUCCESS", "Member Unbanned", description)
 
@@ -292,8 +292,8 @@ class Logging(commands.Cog):
             actor_str = f"by {actor.mention}" if actor else ""
             
             description = (
-                f"> **Member:** {after.mention}\n"
-                f"> **Action:** Nickname Changed {actor_str}\n\n"
+                f"Member:** {after.mention}\n"
+                f"Action:** Nickname Changed {actor_str}\n\n"
                 f"Old: `{before.nick or 'None'}`\n"
                 f"New: `{after.nick or 'None'}`"
             )
@@ -308,7 +308,7 @@ class Logging(commands.Cog):
             
             if not added and not removed: return
             
-            description = f"> **Member:** {after.mention}\n> **Action:** Roles Updated {actor_str}\n\n"
+            description = f"Member:** {after.mention}\n> **Action:** Roles Updated {actor_str}\n\n"
             
             if added: description += f"Added: {', '.join(added)}\n"
             if removed: description += f"Removed: {', '.join(removed)}"
@@ -321,9 +321,9 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **Channel:** {channel.mention}\n"
-            f"> **Type:** {channel.type}\n"
-            f"> **Created by:** {actor_str}"
+            f"Channel:** {channel.mention}\n"
+            f"Type:** {channel.type}\n"
+            f"Created by:** {actor_str}"
         )
         await self._send_log_message(channel.guild.id, "channel_create", "SUCCESS", "Channel Created", description)
 
@@ -333,9 +333,9 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **Channel:** {channel.name}\n"
-            f"> **Type:** {channel.type}\n"
-            f"> **Deleted by:** {actor_str}"
+            f"Channel:** {channel.name}\n"
+            f"Type:** {channel.type}\n"
+            f"Deleted by:** {actor_str}"
         )
         await self._send_log_message(channel.guild.id, "channel_delete", "SUCCESS", "Channel Deleted", description)
 
@@ -351,8 +351,8 @@ class Logging(commands.Cog):
         if not changes: return
         
         description = (
-            f"> **Channel:** {after.mention}\n"
-            f"> **Action:** Updated {actor_str}\n\n"
+            f"Channel:** {after.mention}\n"
+            f"Action:** Updated {actor_str}\n\n"
             + "\n".join(changes)
         )
         await self._send_log_message(after.guild.id, "channel_update", "SUCCESS", "Channel Updated", description)
@@ -363,9 +363,9 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **Role:** {role.mention}\n"
-            f"> **Color:** {role.color}\n"
-            f"> **Created by:** {actor_str}"
+            f"Role:** {role.mention}\n"
+            f"Color:** {role.color}\n"
+            f"Created by:** {actor_str}"
         )
         await self._send_log_message(role.guild.id, "role_create", "SUCCESS", "Role Created", description)
 
@@ -375,8 +375,8 @@ class Logging(commands.Cog):
         actor_str = actor.mention if actor else "Unknown"
         
         description = (
-            f"> **Role:** {role.name}\n"
-            f"> **Deleted by:** {actor_str}"
+            f"Role:** {role.name}\n"
+            f"Deleted by:** {actor_str}"
         )
         await self._send_log_message(role.guild.id, "role_delete", "SUCCESS", "Role Deleted", description)
 
@@ -393,8 +393,8 @@ class Logging(commands.Cog):
         if not changes: return
         
         description = (
-            f"> **Role:** {after.mention}\n"
-            f"> **Action:** Updated {actor_str}\n\n"
+            f"Role:** {after.mention}\n"
+            f"Action:** Updated {actor_str}\n\n"
             + "\n".join(changes)
         )
         await self._send_log_message(after.guild.id, "role_update", "SUCCESS", "Role Updated", description)
@@ -403,18 +403,18 @@ class Logging(commands.Cog):
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if before.channel == after.channel: return
         
-        description = f"> **Member:** {member.mention}\n"
+        description = f"Member:** {member.mention}\n"
         title = "Voice Activity"
         
         if not before.channel and after.channel:
             title = "Voice Channel Joined"
-            description += f"> Joined {after.channel.mention}"
+            description += f"Joined {after.channel.mention}"
         elif before.channel and not after.channel:
             title = "Voice Channel Left"
-            description += f"> Left {before.channel.mention}"
+            description += f"Left {before.channel.mention}"
         else:
             title = "Voice Channel Moved"
-            description += f"> Moved from {before.channel.mention} to {after.channel.mention}"
+            description += f"Moved from {before.channel.mention} to {after.channel.mention}"
             
         await self._send_log_message(member.guild.id, "voice_state_update", "SUCCESS", title, description)
 

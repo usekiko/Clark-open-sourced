@@ -267,7 +267,7 @@ class Forms(commands.Cog):
         for form in forms:
             status = "🟢" if form['is_active'] else "🔴"
             description += f"{status} **#{form['form_id']}** - {form['name']}\n"
-            description += f"> {form['description']}\n\n"
+            description += f"{form['description']}\n\n"
         
         view = self._create_container_view("Forms", description)
         await interaction.response.send_message(view=view, ephemeral=True)
@@ -489,10 +489,10 @@ class Forms(commands.Cog):
         for app in applications:
             emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}.get(app['status'], "⚪")
             description += f"{emoji} **#{app['submission_id']}** - {app['form_name']}\n"
-            description += f"> Status: {app['status'].title()}\n"
-            description += f"> Submitted: <t:{int(app['submitted_at'].timestamp())}:R>\n"
+            description += f"Status: {app['status'].title()}\n"
+            description += f"Submitted: <t:{int(app['submitted_at'].timestamp())}:R>\n"
             if app['reviewed_at']:
-                description += f"> Reviewed: <t:{int(app['reviewed_at'].timestamp())}:R>\n"
+                description += f"Reviewed: <t:{int(app['reviewed_at'].timestamp())}:R>\n"
             description += "\n"
         
         view = self._create_container_view("Your Applications", description)
@@ -522,8 +522,8 @@ class Forms(commands.Cog):
             user = interaction.guild.get_member(app['user_id'])
             user_mention = user.mention if user else f"User {app['user_id']}"
             description += f"**#{app['submission_id']}** - {app['form_name']}\n"
-            description += f"> By: {user_mention}\n"
-            description += f"> Submitted: <t:{int(app['submitted_at'].timestamp())}:R>\n\n"
+            description += f"By: {user_mention}\n"
+            description += f"Submitted: <t:{int(app['submitted_at'].timestamp())}:R>\n\n"
         
         view = self._create_container_view("Application Queue", description)
         await interaction.followup.send(view=view)

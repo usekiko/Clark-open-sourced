@@ -337,17 +337,17 @@ class Analytics(commands.Cog):
         for ch in top_channels[:5]:
             channel = interaction.guild.get_channel(ch['channel_id'])
             name = channel.name if channel else "Deleted Channel"
-            description += f"> #{name}: {ch['total']:,} msgs\n"
+            description += f"#{name}: {ch['total']:,} msgs\n"
         
         description += "\n**Top Users:**\n"
         for u in top_users[:5]:
             user = interaction.guild.get_member(u['user_id'])
             name = user.display_name if user else f"User {u['user_id']}"
-            description += f"> {name}: {u['total']:,} msgs\n"
+            description += f"{name}: {u['total']:,} msgs\n"
         
         description += "\n**Daily Activity:**\n"
         for d in daily[:7]:
-            description += f"> {d['date']}: {d['total']:,} msgs\n"
+            description += f"{d['date']}: {d['total']:,} msgs\n"
         
         view = self._create_container_view("Message Analytics", description)
         await interaction.followup.send(view=view)
@@ -388,13 +388,13 @@ class Analytics(commands.Cog):
         for ch in top_channels[:5]:
             channel = interaction.guild.get_channel(ch['channel_id'])
             name = channel.name if channel else "Deleted Channel"
-            description += f"> {name}: {ch['minutes']:,.0f} min ({ch['users']} users)\n"
+            description += f"{name}: {ch['minutes']:,.0f} min ({ch['users']} users)\n"
         
         description += "\n**Top Users:**\n"
         for u in top_users[:5]:
             user = interaction.guild.get_member(u['user_id'])
             name = user.display_name if user else f"User {u['user_id']}"
-            description += f"> {name}: {u['minutes']:,.0f} min ({u['sessions']} sessions)\n"
+            description += f"{name}: {u['minutes']:,.0f} min ({u['sessions']} sessions)\n"
         
         view = self._create_container_view("Voice Analytics", description)
         await interaction.followup.send(view=view)
@@ -435,11 +435,11 @@ class Analytics(commands.Cog):
         description += "**Daily Activity:**\n"
         for d in daily_stats[:10]:
             net = d['joins'] - d['leaves']
-            description += f"> {d['date']}: +{d['joins']} / -{d['leaves']} = {net:+d}\n"
+            description += f"{d['date']}: +{d['joins']} / -{d['leaves']} = {net:+d}\n"
         
         description += "\n**Account Age of New Members:**\n"
         for age in age_dist:
-            description += f"> {age['age_group']}: {age['count']}\n"
+            description += f"{age['age_group']}: {age['count']}\n"
         
         # Calculate retention approximation
         total_joins = sum(d['joins'] for d in daily_stats)
@@ -484,13 +484,13 @@ class Analytics(commands.Cog):
         
         description += "**Most Used Commands:**\n"
         for cmd in top_commands[:10]:
-            description += f"> /{cmd['command_name']}: {cmd['uses']:,} uses\n"
+            description += f"/{cmd['command_name']}: {cmd['uses']:,} uses\n"
         
         description += "\n**Power Users:**\n"
         for u in top_users[:5]:
             user = interaction.guild.get_member(u['user_id'])
             name = user.display_name if user else f"User {u['user_id']}"
-            description += f"> {name}: {u['uses']:,} commands\n"
+            description += f"{name}: {u['uses']:,} commands\n"
         
         view = self._create_container_view("Command Analytics", description)
         await interaction.followup.send(view=view)

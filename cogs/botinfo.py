@@ -55,25 +55,25 @@ class BotInfo(commands.Cog):
             
             dev_section = ui.TextDisplay(
                 f"**Developer**\n"
-                f"> [usekiko](https://usekiko.com)"
+                f"[usekiko](https://usekiko.com)"
             )
             
             server_section = ui.TextDisplay(
                 f"**Server Statistics**\n"
-                f"> Servers: {server_count:,}\n"
-                f"> Total Users: {total_users:,}"
+                f"Servers: {server_count:,}\n"
+                f"Total Users: {total_users:,}"
             )
             
             shard_section = ui.TextDisplay(
                 f"**Shard Information**\n"
-                f"> Shards: {shard_count}\n"
-                f"> API Latency: {latency}ms"
+                f"Shards: {shard_count}\n"
+                f"API Latency: {latency}ms"
             )
             
             perf_section = ui.TextDisplay(
                 f"**Performance**\n"
-                f"> Memory Usage: {memory}\n"
-                f"> Uptime: {uptime}"
+                f"Memory Usage: {memory}\n"
+                f"Uptime: {uptime}"
             )
             
             container = ui.Container(
