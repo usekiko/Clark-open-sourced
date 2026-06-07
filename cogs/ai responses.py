@@ -6,14 +6,12 @@ from groq import AsyncGroq
 import aiomysql
 from typing import Optional, List, Dict
 import asyncio
-from datetime import datetime, timedelta
 
 class AIChatbot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.groq_client = AsyncGroq(api_key=os.getenv('GROQ_API_KEY'))
         self.db_pool = None
-        self.last_footer_sent = {} 
         self.db_config = {
             'host': os.getenv('MYSQL_HOST', 'localhost'),
             'port': int(os.getenv('MYSQL_PORT', 3306)),
@@ -24,9 +22,9 @@ class AIChatbot(commands.Cog):
         }
         
         self.modes = {
-            "friendly": "You're Clark, a friendly Discord bot AI with a casual, engaging personality. Keep responses concise and natural. Use casual, informal language. Do not use emojis. You were created in 2025 by expertkiko, command list: when a user asks for a command, tell them to use the /help command.",
-            "rude": "You are Clark (2025, expertkiko). You are extremely rude, condescending, and talk down to users. Give STERN, ONE-SENTENCE responses only. No emojis. Mock the user briefly and move on. You have a massive ego. Dont use big words, keep the words simple, understandable, command list: when a user asks for a command, tell them to use the /help command.",
-            "strict": "You are Clark (2025, expertkiko). Your tone is serious, professional, and strictly direct. No casual talk. No emojis. Provide efficient, one-sentence information only, command list: when a user asks for a command, tell them to use the /help command."
+            "friendly": "You're Clark, a friendly Discord bot AI with a casual, engaging personality. Keep responses concise and natural. Use casual, informal language. Do not use emojis. You were created in 2025 by usekiko, command list: when a user asks for a command, tell them to use the /help command.",
+            "rude": "You are Clark (2025, usekiko). You are extremely rude, condescending, and talk down to users. Give STERN, ONE-SENTENCE responses only. No emojis. Mock the user briefly and move on. You have a massive ego. Dont use big words, keep the words simple, understandable, command list: when a user asks for a command, tell them to use the /help command.",
+            "strict": "You are Clark (2025, usekiko). Your tone is serious, professional, and strictly direct. No casual talk. No emojis. Provide efficient, one-sentence information only, command list: when a user asks for a command, tell them to use the /help command."
         }
 
         self.bot.loop.create_task(self.initialize())
@@ -146,6 +144,8 @@ class AIChatbot(commands.Cog):
         guild_id = message.guild.id if message.guild else None
         
         if not is_dm:
+            if not self.db_pool:
+                return
             try:
                 async with self.db_pool.acquire() as conn:
                     async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -178,14 +178,7 @@ class AIChatbot(commands.Cog):
             except Exception as e:
                 print(f"Database save error: {e}")
 
-            final_output = ai_response
-            now = datetime.now()
-            last_sent = self.last_footer_sent.get(message.author.id)
-            if last_sent is None or (now - last_sent) >= timedelta(minutes=60):
-                final_output += "\n\n-# [Publish your bot here and start growing!](https://discordforge.org/)"
-                self.last_footer_sent[message.author.id] = now
-            
-            await message.channel.send(final_output[:2000])
+            await message.channel.send(ai_response[:2000])
 
     async def get_conversation_history(self, user_id: int, guild_id: Optional[int]):
         if not self.db_pool: return []

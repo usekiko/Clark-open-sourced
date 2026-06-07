@@ -4,7 +4,7 @@ from discord import app_commands, ui
 from typing import Optional, Dict, List, Any
 
 # --- Configuration & Emojis ---
-HELP_BANNER_URL = "https://cdn.discordapp.com/attachments/1454528236607242423/1460661734263230556/polish_save.png?ex=6967babf&is=6966693f&hm=9acfab060e1bebb39129d2b9710d4d1610cb49cb4632bc1615515e0e4d663702&"
+
 EMOJI_INFO = "<:goodconnection:1454536158208983051> ›  "
 CAT_EMOJI = "<:help:1444474517324828788>"
 
@@ -155,11 +155,8 @@ class Utilities(commands.Cog):
         header = ui.TextDisplay(f"**{title}**")
         sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
         body = ui.TextDisplay(description)
-        
-        gallery = ui.MediaGallery()
-        gallery.add_item(media=HELP_BANNER_URL)
 
-        container = ui.Container(header, sep, body, gallery)
+        container = ui.Container(header, sep, body)
 
         view = ui.LayoutView(timeout=None)
         view.add_item(container)

@@ -343,12 +343,39 @@ class Moderation(commands.Cog):
         response_view = self._create_styled_view("SUCCESS", "Channel Locked", f"> Send messages permission revoked for {target.name}.")
         await interaction.response.send_message(view=response_view)
 
-    @role_group.command(name="add", description="Adds a role.")
+    @lock_group.command(name="remove", description="Unlocks the channel.")
+    @app_commands.checks.has_permissions(manage_channels=True)
+    async def lock_remove(self, interaction: discord.Interaction):
+        target = interaction.guild.default_role
+        overwrite = interaction.channel.overwrites_for(target)
+        overwrite.send_messages = None
+        await interaction.channel.set_permissions(target, overwrite=overwrite)
+        response_view = self._create_styled_view("SUCCESS", "Channel Unlocked", f"> Send messages permission restored for {target.name}.")
+        await interaction.response.send_message(view=response_view)
+
+    @role_group.command(name="add", description="Adds a role to a user.")
     @app_commands.checks.has_permissions(manage_roles=True)
     async def role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        if role >= interaction.guild.me.top_role:
+            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "> Cannot assign a role higher than or equal to my top role.")
+            return await interaction.response.send_message(view=response_view, ephemeral=True)
         try:
             await member.add_roles(role)
             response_view = self._create_styled_view("SUCCESS", "Role Assigned", f"> {role.name} assigned to {member.name}.")
+            await interaction.response.send_message(view=response_view)
+        except Exception as e:
+            response_view = self._create_styled_view("ERROR", "Error", f"> {e}")
+            await interaction.response.send_message(view=response_view, ephemeral=True)
+
+    @role_group.command(name="remove", description="Removes a role from a user.")
+    @app_commands.checks.has_permissions(manage_roles=True)
+    async def role_remove(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        if role >= interaction.guild.me.top_role:
+            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "> Cannot remove a role higher than or equal to my top role.")
+            return await interaction.response.send_message(view=response_view, ephemeral=True)
+        try:
+            await member.remove_roles(role)
+            response_view = self._create_styled_view("SUCCESS", "Role Removed", f"> {role.name} removed from {member.name}.")
             await interaction.response.send_message(view=response_view)
         except Exception as e:
             response_view = self._create_styled_view("ERROR", "Error", f"> {e}")

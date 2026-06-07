@@ -55,7 +55,7 @@ class BotInfo(commands.Cog):
             
             dev_section = ui.TextDisplay(
                 f"**Developer**\n"
-                f"> [expertkiko](https://usekiko.com)"
+                f"> [usekiko](https://usekiko.com)"
             )
             
             server_section = ui.TextDisplay(
