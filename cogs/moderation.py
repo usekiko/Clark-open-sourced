@@ -120,10 +120,10 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(kick_members=True)
     async def kick(self, interaction: discord.Interaction, member: discord.Member, *, reason: str = "No reason provided."):
         if member == self.bot.user or member == interaction.guild.owner or member == interaction.user:
-            response_view = self._create_styled_view("ERROR", "Access Denied", "> Insufficient permissions to moderate this user.")
+            response_view = self._create_styled_view("ERROR", "Access Denied", "Insufficient permissions to moderate this user.")
             return await interaction.response.send_message(view=response_view, ephemeral=True) 
         if member.top_role >= interaction.guild.me.top_role:
-            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "> Cannot moderate user with higher role position.")
+            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "Cannot moderate user with higher role position.")
             return await interaction.response.send_message(view=response_view, ephemeral=True) 
         try:
             case_id = await self.log_case(interaction, "KICK", member, reason)
@@ -140,21 +140,21 @@ class Moderation(commands.Cog):
 
             await member.kick(reason=f"Case #{case_id}: {reason} (Kicked by {interaction.user.name})")
             
-            response_view = self._create_styled_view("SUCCESS", "Member Kicked", f"> User: {member.name}\n> Reason: {reason}\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Member Kicked", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view) 
         except discord.Forbidden:
-            response_view = self._create_styled_view("ERROR", "Missing Permissions", "> 'Kick Members' permission required.")
+            response_view = self._create_styled_view("ERROR", "Missing Permissions", "'Kick Members' permission required.")
             await interaction.response.send_message(view=response_view, ephemeral=True) 
 
     @ban_group.command(name="add", description="Permanently removes a user from the server.")
     @app_commands.checks.has_permissions(ban_members=True)
     async def ban_add(self, interaction: discord.Interaction, user: discord.User, reason: str, delete_days: app_commands.Range[int, 0, 7] = 0):
         if user == self.bot.user or user == interaction.guild.owner or user == interaction.user:
-            response_view = self._create_styled_view("ERROR", "Protected User", "> Cannot moderate administrator or server owner.")
+            response_view = self._create_styled_view("ERROR", "Protected User", "Cannot moderate administrator or server owner.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         member = interaction.guild.get_member(user.id)
         if member and member.top_role >= interaction.guild.me.top_role:
-            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "> Cannot moderate user with higher role position.")
+            response_view = self._create_styled_view("ERROR", "Hierarchy Error", "Cannot moderate user with higher role position.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         try:
             case_id = await self.log_case(interaction, "BAN", user, reason)
@@ -171,17 +171,17 @@ class Moderation(commands.Cog):
 
             await interaction.guild.ban(user, reason=f"Case #{case_id}: {reason} (Banned by {interaction.user.name})", delete_message_days=delete_days)
             
-            response_view = self._create_styled_view("SUCCESS", "Member Banned", f"> User: {user.name}\n> Reason: {reason}\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Member Banned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view)
         except discord.Forbidden:
-            response_view = self._create_styled_view("ERROR", "Missing Permissions", "> 'Ban Members' permission required.")
+            response_view = self._create_styled_view("ERROR", "Missing Permissions", "'Ban Members' permission required.")
             await interaction.response.send_message(view=response_view, ephemeral=True)
 
     @ban_group.command(name="remove", description="Removes a ban from a user.")
     @app_commands.checks.has_permissions(ban_members=True)
     async def ban_remove(self, interaction: discord.Interaction, user_id: str, *, reason: str = "Reversal of ban."):
         if not hasattr(self.bot, 'db_pool') or self.bot.db_pool is None:
-            response_view = self._create_styled_view("ERROR", "Database Error", "> Database connection unavailable.")
+            response_view = self._create_styled_view("ERROR", "Database Error", "Database connection unavailable.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         
         try:
@@ -199,20 +199,20 @@ class Moderation(commands.Cog):
             )
             await self._send_dm_container(user, dm_title, dm_description)
             
-            response_view = self._create_styled_view("SUCCESS", "Member Unbanned", f"> User: {user.name}\n> Reason: {reason}\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Member Unbanned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view)
         except discord.NotFound:
-            response_view = self._create_styled_view("ERROR", "Not Banned", "> User is not currently banned.")
+            response_view = self._create_styled_view("ERROR", "Not Banned", "User is not currently banned.")
             await interaction.response.send_message(view=response_view, ephemeral=True)
         except Exception as e:
-             response_view = self._create_styled_view("ERROR", "Error", f"> {e}")
+             response_view = self._create_styled_view("ERROR", "Error", f"{e}")
              await interaction.response.send_message(view=response_view, ephemeral=True)
 
     @tempban_group.command(name="add", description="Temporarily removes a user.")
     @app_commands.checks.has_permissions(ban_members=True)
     async def tempban_add(self, interaction: discord.Interaction, user: discord.User, duration: app_commands.Transform[datetime.timedelta, DurationTransformer], reason: str):
         if user == self.bot.user or user == interaction.guild.owner or user == interaction.user:
-            response_view = self._create_styled_view("ERROR", "Protected User", "> Cannot moderate administrator or server owner.")
+            response_view = self._create_styled_view("ERROR", "Protected User", "Cannot moderate administrator or server owner.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         try:
             end_time = discord.utils.utcnow() + duration
@@ -231,10 +231,10 @@ class Moderation(commands.Cog):
             await self._send_dm_container(user, dm_title, dm_description)
             await interaction.guild.ban(user, reason=f"Case #{case_id} (Temporary): {reason}")
             
-            response_view = self._create_styled_view("SUCCESS", "Temporary Ban Applied", f"> User: {user.name}\n> Expires: <t:{expires_at_ts}:F>\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Temporary Ban Applied", f"User: {user.name}\nExpires: <t:{expires_at_ts}:F>\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view)
         except Exception as e:
-            response_view = self._create_styled_view("ERROR", "Error", f"> {e}")
+            response_view = self._create_styled_view("ERROR", "Error", f"{e}")
             await interaction.response.send_message(view=response_view, ephemeral=True)
 
     @tempban_group.command(name="remove", description="Removes a temporary ban.")
@@ -246,7 +246,7 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(moderate_members=True)
     async def mute_add(self, interaction: discord.Interaction, member: discord.Member, duration: app_commands.Transform[datetime.timedelta, DurationTransformer], *, reason: str):
         if member == self.bot.user or member == interaction.guild.owner or member == interaction.user:
-            response_view = self._create_styled_view("ERROR", "Protected User", "> Cannot moderate administrator or server owner.")
+            response_view = self._create_styled_view("ERROR", "Protected User", "Cannot moderate administrator or server owner.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         try:
             end_time = discord.utils.utcnow() + duration
@@ -264,33 +264,33 @@ class Moderation(commands.Cog):
             await self._send_dm_container(member, dm_title, dm_description)
             await member.timeout(duration, reason=f"Case #{case_id}: {reason}")
             
-            response_view = self._create_styled_view("SUCCESS", "Member Muted", f"> User: {member.name}\n> Expires: <t:{expires_at_ts}:F>\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Member Muted", f"User: {member.name}\nExpires: <t:{expires_at_ts}:F>\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view)
         except Exception as e:
-            response_view = self._create_styled_view("ERROR", "Error", f"> {e}")
+            response_view = self._create_styled_view("ERROR", "Error", f"{e}")
             await interaction.response.send_message(view=response_view, ephemeral=True)
 
     @mute_group.command(name="remove", description="Removes a user's timeout.")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def mute_remove(self, interaction: discord.Interaction, member: discord.Member, *, reason: str = "Reversal of mute."):
         if not member.is_timed_out():
-            response_view = self._create_styled_view("ERROR", "Not Muted", "> User does not have an active timeout.")
+            response_view = self._create_styled_view("ERROR", "Not Muted", "User does not have an active timeout.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         try:
             case_id = await self.log_case(interaction, "UNMUTE", member, reason)
             await member.timeout(None, reason=f"Case #{case_id}: {reason}")
             
-            response_view = self._create_styled_view("SUCCESS", "Member Unmuted", f"> User: {member.name}\n> Case ID: #{case_id}")
+            response_view = self._create_styled_view("SUCCESS", "Member Unmuted", f"User: {member.name}\nCase ID: #{case_id}")
             await interaction.response.send_message(view=response_view)
         except Exception as e:
-            response_view = self._create_styled_view("ERROR", "Error", f"> {e}")
+            response_view = self._create_styled_view("ERROR", "Error", f"{e}")
             await interaction.response.send_message(view=response_view, ephemeral=True)
 
     @warn_group.command(name="add", description="Gives a user a warning.")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn_add(self, interaction: discord.Interaction, member: discord.Member, *, reason: str):
         if member.bot or member == interaction.guild.owner or member == interaction.user:
-            response_view = self._create_styled_view("ERROR", "Invalid Target", "> Cannot moderate this user.")
+            response_view = self._create_styled_view("ERROR", "Invalid Target", "Cannot moderate this user.")
             return await interaction.response.send_message(view=response_view, ephemeral=True)
         case_id = await self.log_case(interaction, "WARN", member, reason)
         
@@ -298,7 +298,7 @@ class Moderation(commands.Cog):
         dm_description = f"### Details\n- **Reason:** {reason}\n- **Case ID:** #{case_id}"
         await self._send_dm_container(member, dm_title, dm_description)
         
-        response_view = self._create_styled_view("SUCCESS", "Warning Issued", f"> User: {member.name}\n> Reason: {reason}\n> Case ID: #{case_id}")
+        response_view = self._create_styled_view("SUCCESS", "Warning Issued", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
         await interaction.response.send_message(view=response_view)
 
     @warn_group.command(name="remove", description="Deletes a warning by Case ID.")
@@ -309,13 +309,13 @@ class Moderation(commands.Cog):
                 await cursor.execute("SELECT log_id, action_type, user_id FROM mod_logs WHERE guild_case_id = %s AND guild_id = %s", (case_id, str(interaction.guild.id)))
                 record = await cursor.fetchone()
                 if not record or record.get('action_type') != 'WARN':
-                    response_view = self._create_styled_view("ERROR", "Not Found", "> Warning case does not exist.")
+                    response_view = self._create_styled_view("ERROR", "Not Found", "Warning case does not exist.")
                     return await interaction.response.send_message(view=response_view, ephemeral=True)
                 
                 await cursor.execute("DELETE FROM mod_logs WHERE log_id = %s", (record['log_id'],))
                 await conn.commit()
         
-        response_view = self._create_styled_view("SUCCESS", "Warning Removed", f"> Case #{case_id} removed from record.")
+        response_view = self._create_styled_view("SUCCESS", "Warning Removed", f"Case #{case_id} removed from record.")
         await interaction.response.send_message(view=response_view)
 
     @app_commands.command(name="purge", description="Deletes messages.")
@@ -323,14 +323,14 @@ class Moderation(commands.Cog):
     async def purge(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 100]):
         await interaction.response.defer(ephemeral=True)
         deleted = await interaction.channel.purge(limit=amount)
-        response_view = self._create_styled_view("SUCCESS", "Messages Purged", f"> {len(deleted)} messages deleted.")
+        response_view = self._create_styled_view("SUCCESS", "Messages Purged", f"{len(deleted)} messages deleted.")
         await interaction.followup.send(view=response_view, ephemeral=True)
 
     @slowmode_group.command(name="apply", description="Sets channel slowmode.")
     @app_commands.checks.has_permissions(manage_channels=True)
     async def slowmode_apply(self, interaction: discord.Interaction, seconds: app_commands.Range[int, 0, 21600]):
         await interaction.channel.edit(slowmode_delay=seconds)
-        response_view = self._create_styled_view("SUCCESS", "Slowmode Configured", f"> Rate limit set to {seconds} seconds.")
+        response_view = self._create_styled_view("SUCCESS", "Slowmode Configured", f"Rate limit set to {seconds} seconds.")
         await interaction.response.send_message(view=response_view)
 
     @lock_group.command(name="apply", description="Locks the channel.")

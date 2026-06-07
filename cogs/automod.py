@@ -17,6 +17,15 @@ class AutoMod(commands.GroupCog, name="automod"):
         ]
         self.gif_patterns = ["*.gif", "*tenor.com*", "*giphy.com*"]
 
+    def _create_styled_view(self, title: str, description: str) -> discord.ui.LayoutView:
+        header = discord.ui.TextDisplay(f"**{title}**")
+        sep = discord.ui.Separator(spacing=discord.SeparatorSpacing.small)
+        body = discord.ui.TextDisplay(description)
+        container = discord.ui.Container(header, sep, body)
+        view = discord.ui.LayoutView()
+        view.add_item(container)
+        return view
+
     async def get_rule_by_name(self, guild: discord.Guild, name: str):
         """Finds an existing AutoMod rule by name."""
         try:
@@ -148,35 +157,16 @@ class AutoMod(commands.GroupCog, name="automod"):
                     log_changes.append(f"Set Mention Limit to {mention_limit}")
 
             if not log_changes:
-                return await itx.followup.send("No changes were specified.")
+                return await itx.followup.send(view=self._create_styled_view("No Changes", "No changes were specified."))
 
-            summary = "\n".join([f"> {line}" for line in log_changes])
-            header = ui.TextDisplay("**AutoMod Configuration**")
-            sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-            body = ui.TextDisplay(summary)
-            
-            container = ui.Container(header, sep, body)
-            view = ui.LayoutView()
-            view.add_item(container)
-            await itx.followup.send(view=view)
+            summary = "\n".join(log_changes)
+            await itx.followup.send(view=self._create_styled_view("AutoMod Configuration", summary))
 
         except discord.Forbidden:
-            header = ui.TextDisplay("**Error**")
-            sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-            body = ui.TextDisplay("> Insufficient permissions. Administrator access required.")
-            container = ui.Container(header, sep, body)
-            view = ui.LayoutView()
-            view.add_item(container)
-            await itx.followup.send(view=view)
+            await itx.followup.send(view=self._create_styled_view("Error", "Insufficient permissions. Administrator access required."))
         except Exception as e:
             logger.error(f"AutoMod Config Error: {e}")
-            header = ui.TextDisplay("**Error**")
-            sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-            body = ui.TextDisplay(f"> {e}")
-            container = ui.Container(header, sep, body)
-            view = ui.LayoutView()
-            view.add_item(container)
-            await itx.followup.send(view=view)
+            await itx.followup.send(view=self._create_styled_view("Error", str(e)))
 
 async def setup(bot):
     await bot.add_cog(AutoMod(bot))

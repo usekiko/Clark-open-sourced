@@ -40,6 +40,8 @@ class Leveling(commands.Cog):
         self.response_thumbnail_accessory = None
         self._cd = commands.CooldownMapping.from_cooldown(1, 60.0, commands.BucketType.member)
         self._settings_cache = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
 
     async def setup_database(self):
         if self.bot.user:
@@ -192,7 +194,7 @@ class Leveling(commands.Cog):
                             target_channel = message.guild.get_channel(target_id) if target_id else message.channel
 
                             if target_channel:
-                                desc = f"> **Congratulations {message.author.mention}! You've reached Level {actual_level}!**"
+                                desc = f"Congratulations {message.author.mention}! You've reached Level {actual_level}!"
                                 view = self._create_response_container("Leveled Up!", desc, "LEVELUP")
                                 try: await target_channel.send(view=view)
                                 except discord.Forbidden: pass
@@ -221,7 +223,7 @@ class Leveling(commands.Cog):
         settings = await self._get_settings(interaction.guild.id)
 
         if not settings or not settings['enabled']:
-            desc = "> **The leveling system is currently disabled in this server.**"
+            desc = "The leveling system is currently disabled in this server."
             view = self._create_response_container("System Disabled", desc, "INFO")
             return await interaction.followup.send(view=view)
 
@@ -243,13 +245,11 @@ class Leveling(commands.Cog):
         progress_bar = self._make_progress_bar(xp - cur_start, nxt_req - cur_start)
         
         desc = (
-            f"**Member Statistics**\n"
-            f"> **Rank:** {rank_str}\n"
-            f"> **Level:** {level}\n"
-            f"> **Total Experience:** {xp:,} XP\n\n"
-            f"**Level Progress**\n"
-            f"> {progress_bar}\n"
-            f"**{xp - cur_start:,} / {nxt_req - cur_start:,} XP to Level {level + 1}**"
+            f"Rank: {rank_str}\n"
+            f"Level: {level}\n"
+            f"Total XP: {xp:,}\n\n"
+            f"{progress_bar}\n"
+            f"{xp - cur_start:,} / {nxt_req - cur_start:,} XP to Level {level + 1}"
         )
         
         view = self._create_response_container(f"{member.display_name}'s Progress", desc, "SUCCESS")
@@ -264,7 +264,7 @@ class Leveling(commands.Cog):
         settings = await self._get_settings(interaction.guild.id)
 
         if not settings or not settings['enabled']:
-            desc = "> **The leveling system is currently disabled in this server.**"
+            desc = "The leveling system is currently disabled in this server."
             view = self._create_response_container("System Disabled", desc, "INFO")
             return await interaction.followup.send(view=view)
 
@@ -274,7 +274,7 @@ class Leveling(commands.Cog):
                 top_users = await cursor.fetchall()
 
         if not top_users:
-            desc = "> **No one has earned experience points yet.**"
+            desc = "No one has earned experience points yet."
             view = self._create_response_container("Leaderboard Empty", desc, "INFO")
             return await interaction.followup.send(view=view)
 
@@ -286,7 +286,7 @@ class Leveling(commands.Cog):
 
             medal = '🥇' if idx==1 else '🥈' if idx==2 else '🥉' if idx==3 else f'#{idx}'
             lvl = self._get_level_from_xp(u['xp'])
-            lines.append(f"> **{medal}** — {name} • Lvl {lvl} (`{u['xp']:,} XP`)")
+            lines.append(f"{medal} {name} — Lvl {lvl} ({u['xp']:,} XP)")
         
         desc = "\n".join(lines)
         view = self._create_response_container("Competitive Leaderboard", desc, "TROPHY")
@@ -313,7 +313,7 @@ class Leveling(commands.Cog):
                 new_settings = await cursor.fetchone()
                 self._settings_cache[interaction.guild.id] = new_settings
 
-        desc = "> **Server leveling parameters successfully updated and cached.**"
+        desc = "Settings updated successfully."
         view = self._create_response_container("Configuration Updated", desc, "SUCCESS")
         await interaction.followup.send(view=view, ephemeral=True)
 

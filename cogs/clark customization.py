@@ -77,7 +77,7 @@ class Settings(commands.Cog):
                     await conn.commit()
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
-            view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"> Personality set to: {mode.capitalize()}\n> Conversation history cleared.", interaction)
+            view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Mode command error: {e}{Colors.RESET}")
@@ -88,7 +88,7 @@ class Settings(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_instruction(self, interaction: discord.Interaction, instruction: str):
         if len(instruction) > 400:
-            view = self._create_styled_view('INFO', "Character Limit Exceeded", "> Maximum instruction length is 400 characters.", interaction)
+            view = self._create_styled_view('INFO', "Character Limit Exceeded", "Maximum instruction length is 400 characters.", interaction)
             return await interaction.response.send_message(view=view, ephemeral=True)
         
         if not await self._check_db_ready(interaction): return
@@ -104,7 +104,7 @@ class Settings(commands.Cog):
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
             
-            view = self._create_styled_view('SUCCESS', "Custom Instruction Set", f"> New instruction configured.\n> Conversation history cleared.", interaction)
+            view = self._create_styled_view('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Instruction command error: {e}{Colors.RESET}")
@@ -123,7 +123,7 @@ class Settings(commands.Cog):
                     await conn.commit()
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
-            view = self._create_styled_view('SUCCESS', "Settings Reset", "> Custom instructions removed.\n> Default behaviour restored.\n> Conversation history cleared.", interaction)
+            view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Reset error: {e}{Colors.RESET}")
@@ -136,7 +136,7 @@ class Settings(commands.Cog):
             async with conn.cursor() as cursor:
                 await cursor.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES (%s, %s, TRUE) ON DUPLICATE KEY UPDATE chatbot_enabled=TRUE", (str(interaction.guild.id), interaction.guild.name))
                 await conn.commit()
-        view = self._create_styled_view('SUCCESS', "AI Responses Enabled", "> Clark will now respond to mentions.", interaction)
+        view = self._create_styled_view('SUCCESS', "AI Responses Enabled", "Clark will now respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
     @clark_group.command(name="off", description="Turns the mention chatbot feature off.")
@@ -147,7 +147,7 @@ class Settings(commands.Cog):
             async with conn.cursor() as cursor:
                 await cursor.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES (%s, %s, FALSE) ON DUPLICATE KEY UPDATE chatbot_enabled=FALSE", (str(interaction.guild.id), interaction.guild.name))
                 await conn.commit()
-        view = self._create_styled_view('SUCCESS', "AI Responses Disabled", "> Clark will no longer respond to mentions.", interaction)
+        view = self._create_styled_view('SUCCESS', "AI Responses Disabled", "Clark will no longer respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
     @clark_group.command(name="add_channel", description="Whitelist a channel for Clark.")
@@ -158,7 +158,7 @@ class Settings(commands.Cog):
             async with conn.cursor() as cursor:
                 await cursor.execute("INSERT IGNORE INTO allowed_channels (guild_id, channel_id) VALUES (%s, %s)", (str(interaction.guild.id), channel.id))
                 await conn.commit()
-        view = self._create_styled_view('SUCCESS', "Channel Whitelisted", f"> {channel.mention} added to allowed channels.", interaction)
+        view = self._create_styled_view('SUCCESS', "Channel Whitelisted", f"{channel.mention} added to allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
     @clark_group.command(name="remove_channel", description="Remove a channel whitelist.")
@@ -169,7 +169,7 @@ class Settings(commands.Cog):
             async with conn.cursor() as cursor:
                 await cursor.execute("DELETE FROM allowed_channels WHERE guild_id = %s AND channel_id = %s", (str(interaction.guild.id), channel.id))
                 await conn.commit()
-        view = self._create_styled_view('SUCCESS', "Channel Removed", f"> {channel.mention} removed from allowed channels.", interaction)
+        view = self._create_styled_view('SUCCESS', "Channel Removed", f"{channel.mention} removed from allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
     @clark_group.command(name="clear_channels", description="Respond in all channels.")
@@ -180,7 +180,7 @@ class Settings(commands.Cog):
             async with conn.cursor() as cursor:
                 await cursor.execute("DELETE FROM allowed_channels WHERE guild_id = %s", (str(interaction.guild.id),))
                 await conn.commit()
-        view = self._create_styled_view('SUCCESS', "Channel Restrictions Cleared", "> Clark will respond in all channels.", interaction)
+        view = self._create_styled_view('SUCCESS', "Channel Restrictions Cleared", "Clark will respond in all channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
     @clark_group.command(name="list_channels", description="List allowed channels.")
@@ -193,11 +193,10 @@ class Settings(commands.Cog):
                 res = await cursor.fetchall()
         
         if not res: 
-            view = self._create_styled_view('SUCCESS', "Channel Access", "> No restrictions configured.\n> Clark responds in all channels.", interaction)
+            view = self._create_styled_view('SUCCESS', "Channel Access", "No restrictions configured. Clark responds in all channels.", interaction)
         else:
-            # Join mentions with newlines to trigger the multi-line fix in _create_styled_view
             mentions = [interaction.guild.get_channel(int(r[0])).mention for r in res if interaction.guild.get_channel(int(r[0]))]
-            view = self._create_styled_view('SUCCESS', "Allowed Channels", "> " + "\n> ".join(mentions), interaction)
+            view = self._create_styled_view('SUCCESS', "Allowed Channels", "\n".join(mentions), interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
 async def setup(bot: commands.Bot):
