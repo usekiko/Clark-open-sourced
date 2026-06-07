@@ -11,12 +11,12 @@ class Description(commands.Cog):
     async def update_status(self):
         if self.bot.is_ready():
             total_users = sum(g.member_count or 0 for g in self.bot.guilds)
-            activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name=f"{total_users:,} users"
+            activity = discord.Streaming(
+                name=f"{total_users:,} users",
+                url="https://www.youtube.com/@Kikodev_23"
             )
             await self.bot.change_presence(activity=activity)
-            print(f"[Status Update] Status set to: Watching {total_users:,} users")
+            print(f"[Status Update] Status set to: Streaming {total_users:,} users")
         else:
             print("[Status Update] Bot is not ready, skipping status update.")
 
