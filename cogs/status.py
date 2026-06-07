@@ -10,12 +10,13 @@ class Description(commands.Cog):
     @tasks.loop(minutes=120) 
     async def update_status(self):
         if self.bot.is_ready():
-            server_count = len(self.bot.guilds)
-            status_message = f"/help › {server_count} servers"
-            
-            activity = discord.Game(name=status_message)
+            total_users = sum(g.member_count or 0 for g in self.bot.guilds)
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"{total_users:,} users"
+            )
             await self.bot.change_presence(activity=activity)
-            print(f"[Status Update] Status set to: Playing {status_message}")
+            print(f"[Status Update] Status set to: Watching {total_users:,} users")
         else:
             print("[Status Update] Bot is not ready, skipping status update.")
 
