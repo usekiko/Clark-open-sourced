@@ -13,7 +13,7 @@ class Description(commands.Cog):
             total_users = sum(g.member_count or 0 for g in self.bot.guilds)
             activity = discord.Streaming(
                 name=f"{total_users:,} users",
-                url="https://www.youtube.com/@Kikodev_23"
+                url="https://www.twitch.tv/jynxzi"
             )
             await self.bot.change_presence(activity=activity)
             print(f"[Status Update] Status set to: Streaming {total_users:,} users")
