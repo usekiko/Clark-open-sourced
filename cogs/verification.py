@@ -84,7 +84,6 @@ class Verification(commands.Cog):
         self.response_thumbnail_accessory = None 
         self.dummy_accessory = ui.TextDisplay('.') 
         self.bot.loop.create_task(self.setup_bot_profile())
-        self.bot.loop.create_task(self._restore_persistent_views())
         
     async def setup_bot_profile(self):
         await self.bot.wait_until_ready()
@@ -186,6 +185,7 @@ class Verification(commands.Cog):
     async def _initialize_verification(self):
         await self.bot.wait_until_ready()
         await self._create_verification_tables()
+        await self._restore_persistent_views()
 
     verification_group = app_commands.Group(name="verification", description="Verification system settings.")
 

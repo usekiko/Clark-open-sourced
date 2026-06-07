@@ -16,10 +16,8 @@ class ThreadGroup(commands.GroupCog, name="thread"):
         """Load active channels from DB on startup."""
         if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("SELECT channel_id FROM thread_channels")
-                    rows = await cur.fetchall()
-                    self.active_channels = {row[0] for row in rows}
+                rows = await conn.fetch("SELECT channel_id FROM thread_channels")
+                self.active_channels = {row[0] for row in rows}
             logger.info(f"Loaded {len(self.active_channels)} thread channels from database.")
 
     @app_commands.command(name="create", description="Enable auto-threads for images in a channel")
@@ -29,12 +27,9 @@ class ThreadGroup(commands.GroupCog, name="thread"):
         await itx.response.defer(ephemeral=True)
         
         try:
-            # Using INSERT IGNORE to prevent the "Duplicate entry" warning
-            query = "INSERT IGNORE INTO thread_channels (guild_id, channel_id) VALUES (%s, %s)"
+            query = "INSERT INTO thread_channels (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(query, (itx.guild.id, channel.id))
-                    await conn.commit()
+                await conn.execute(query, itx.guild.id, channel.id)
             
             self.active_channels.add(channel.id)
             await itx.followup.send(f"Successfully enabled auto-threads for {channel.mention}.")
@@ -50,9 +45,7 @@ class ThreadGroup(commands.GroupCog, name="thread"):
         
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("DELETE FROM thread_channels WHERE channel_id = %s", (channel.id,))
-                    await conn.commit()
+                await conn.execute("DELETE FROM thread_channels WHERE channel_id = $1", channel.id)
             
             self.active_channels.discard(channel.id)
             await itx.followup.send(f"Successfully disabled auto-threads for {channel.mention}.")
@@ -66,9 +59,7 @@ class ThreadGroup(commands.GroupCog, name="thread"):
         await itx.response.defer(ephemeral=True)
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("SELECT channel_id FROM thread_channels WHERE guild_id = %s", (itx.guild.id,))
-                rows = await cur.fetchall()
+            rows = await conn.fetch("SELECT channel_id FROM thread_channels WHERE guild_id = $1", itx.guild.id)
 
         if not rows:
             return await itx.followup.send("No thread channels are currently configured.")

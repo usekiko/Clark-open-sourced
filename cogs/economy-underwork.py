@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import aiomysql
 import json
 import random
 import math
@@ -44,34 +43,32 @@ class Economy(commands.Cog):
 
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS economy_users (
-                            guild_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
-                            wallet BIGINT DEFAULT 0, bank BIGINT DEFAULT 0,
-                            last_work BIGINT DEFAULT 0, last_slut BIGINT DEFAULT 0,
-                            last_rob BIGINT DEFAULT 0, last_daily BIGINT DEFAULT 0,
-                            last_stream BIGINT DEFAULT 0, last_hunt BIGINT DEFAULT 0,
-                            last_scavenge BIGINT DEFAULT 0,
-                            PRIMARY KEY (guild_id, user_id)
-                        )
-                    """)
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS economy_settings (
-                            guild_id BIGINT PRIMARY KEY,
-                            currency_name VARCHAR(32) DEFAULT 'Credits',
-                            currency_symbol VARCHAR(32) DEFAULT '⌽',
-                            daily_amount INT DEFAULT 2000,
-                            work_min INT DEFAULT 100, work_max INT DEFAULT 500, work_cooldown INT DEFAULT 5,
-                            stream_min INT DEFAULT 150, stream_max INT DEFAULT 800, stream_cooldown INT DEFAULT 15,
-                            hunt_min INT DEFAULT 300, hunt_max INT DEFAULT 1200, hunt_cooldown INT DEFAULT 45,
-                            scavenge_min INT DEFAULT 50, scavenge_max INT DEFAULT 300, scavenge_cooldown INT DEFAULT 5,
-                            slut_min INT DEFAULT 200, slut_max INT DEFAULT 1000, slut_fail_rate INT DEFAULT 45, slut_cooldown INT DEFAULT 10,
-                            rob_fail_rate INT DEFAULT 60, rob_min_wallet INT DEFAULT 500, rob_cooldown INT DEFAULT 30,
-                            slots_fail_rate INT DEFAULT 35
-                        )
-                    """)
-                    await conn.commit()
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS economy_users (
+                        guild_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+                        wallet BIGINT DEFAULT 0, bank BIGINT DEFAULT 0,
+                        last_work BIGINT DEFAULT 0, last_slut BIGINT DEFAULT 0,
+                        last_rob BIGINT DEFAULT 0, last_daily BIGINT DEFAULT 0,
+                        last_stream BIGINT DEFAULT 0, last_hunt BIGINT DEFAULT 0,
+                        last_scavenge BIGINT DEFAULT 0,
+                        PRIMARY KEY (guild_id, user_id)
+                    )
+                """)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS economy_settings (
+                        guild_id BIGINT PRIMARY KEY,
+                        currency_name VARCHAR(32) DEFAULT 'Credits',
+                        currency_symbol VARCHAR(32) DEFAULT '⌽',
+                        daily_amount INT DEFAULT 2000,
+                        work_min INT DEFAULT 100, work_max INT DEFAULT 500, work_cooldown INT DEFAULT 5,
+                        stream_min INT DEFAULT 150, stream_max INT DEFAULT 800, stream_cooldown INT DEFAULT 15,
+                        hunt_min INT DEFAULT 300, hunt_max INT DEFAULT 1200, hunt_cooldown INT DEFAULT 45,
+                        scavenge_min INT DEFAULT 50, scavenge_max INT DEFAULT 300, scavenge_cooldown INT DEFAULT 5,
+                        slut_min INT DEFAULT 200, slut_max INT DEFAULT 1000, slut_fail_rate INT DEFAULT 45, slut_cooldown INT DEFAULT 10,
+                        rob_fail_rate INT DEFAULT 60, rob_min_wallet INT DEFAULT 500, rob_cooldown INT DEFAULT 30,
+                        slots_fail_rate INT DEFAULT 35
+                    )
+                """)
             print(f"{Colors.GREEN}[SUCCESS]      Economy synchronized. All systems active.{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR]        Failed to initialize economy tables: {e}{Colors.RESET}")
@@ -80,13 +77,10 @@ class Economy(commands.Cog):
         if guild_id in self._settings_cache:
             return self._settings_cache[guild_id]
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("INSERT INTO economy_settings (guild_id) VALUES (%s) ON DUPLICATE KEY UPDATE guild_id=guild_id", (guild_id,))
-                await conn.commit()
-                await cursor.execute("SELECT * FROM economy_settings WHERE guild_id = %s", (guild_id,))
-                config = await cursor.fetchone()
-                self._settings_cache[guild_id] = config
-                return config
+            await conn.execute("INSERT INTO economy_settings (guild_id) VALUES ($1) ON CONFLICT (guild_id) DO UPDATE SET guild_id=EXCLUDED.guild_id", guild_id)
+            config = await conn.fetchrow("SELECT * FROM economy_settings WHERE guild_id = $1", guild_id)
+            self._settings_cache[guild_id] = config
+            return config
 
     def _create_styled_container(self, status: str, title: str, description: str, user: discord.User = None) -> ResponseView:
         header = ui.TextDisplay(f"**{title}**")
@@ -98,11 +92,8 @@ class Economy(commands.Cog):
 
     async def _get_user_data(self, guild_id: int, user_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("INSERT INTO economy_users (guild_id, user_id) VALUES (%s, %s) ON DUPLICATE KEY UPDATE guild_id=guild_id", (guild_id, user_id))
-                await conn.commit()
-                await cursor.execute("SELECT * FROM economy_users WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
-                return await cursor.fetchone()
+            await conn.execute("INSERT INTO economy_users (guild_id, user_id) VALUES ($1, $2) ON CONFLICT (guild_id, user_id) DO UPDATE SET guild_id=EXCLUDED.guild_id", guild_id, user_id)
+            return await conn.fetchrow("SELECT * FROM economy_users WHERE guild_id = $1 AND user_id = $2", guild_id, user_id)
 
     @app_commands.command(name="balance", description="Detailed audit of your wallet and vault liquidity.")
     async def balance(self, interaction: discord.Interaction, member: discord.Member = None):
@@ -135,9 +126,7 @@ class Economy(commands.Cog):
             return await interaction.followup.send(view=view)
 
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_daily = %s WHERE guild_id = %s AND user_id = %s", (cfg['daily_amount'], now, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_daily = $2 WHERE guild_id = $3 AND user_id = $4", cfg['daily_amount'], now, interaction.guild.id, interaction.user.id)
         
         desc = f"> **Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.**"
         view = self._create_styled_container("SUCCESS", "Daily Stipend", desc)
@@ -162,9 +151,7 @@ class Economy(commands.Cog):
 
             gain = random.randint(cfg['work_min'] or 100, cfg['work_max'] or 500)
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_work = %s WHERE guild_id = %s AND user_id = %s", (gain, now, interaction.guild.id, interaction.user.id))
-                    await conn.commit()
+                await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_work = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
             
             jobs = ["Virtual Real Estate Agent", "AI Ethicist", "Professional Meme Curator", "Lead Developer"]
             desc = f"> **Worked as a {random.choice(jobs)} and earned {gain:,} {cfg['currency_symbol']}.**"
@@ -190,9 +177,7 @@ class Economy(commands.Cog):
 
         gain = random.randint(cfg['stream_min'], cfg['stream_max'])
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_stream = %s WHERE guild_id = %s AND user_id = %s", (gain, now, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_stream = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
         desc = f"> **Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.**"
         view = self._create_styled_container("SUCCESS", "Stream Ended", desc)
         await interaction.followup.send(view=view)
@@ -213,9 +198,7 @@ class Economy(commands.Cog):
 
         gain = random.randint(cfg['hunt_min'], cfg['hunt_max'])
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_hunt = %s WHERE guild_id = %s AND user_id = %s", (gain, now, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_hunt = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
         desc = f"> **Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!**"
         view = self._create_styled_container("SUCCESS", "Hunt Conclusion", desc)
         await interaction.followup.send(view=view)
@@ -236,9 +219,7 @@ class Economy(commands.Cog):
 
         gain = random.randint(cfg['scavenge_min'], cfg['scavenge_max'])
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_scavenge = %s WHERE guild_id = %s AND user_id = %s", (gain, now, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_scavenge = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
         desc = f"> **Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!**"
         view = self._create_styled_container("SUCCESS", "Scavenge Results", desc)
         await interaction.followup.send(view=view)
@@ -260,17 +241,13 @@ class Economy(commands.Cog):
         if random.randint(1, 100) <= cfg['slut_fail_rate']:
             loss = random.randint(200, 600)
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet - %s, last_slut = %s WHERE guild_id = %s AND user_id = %s", (loss, now, interaction.guild.id, interaction.user.id))
-                    await conn.commit()
+                await conn.execute("UPDATE economy_users SET wallet = wallet - $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4", loss, now, interaction.guild.id, interaction.user.id)
             desc = f"> **Authorities intercepted the hustle. Fined {loss:,} {cfg['currency_symbol']}.**"
             view = self._create_styled_container("ERROR", "Intercepted", desc)
         else:
             gain = random.randint(cfg['slut_min'], cfg['slut_max'])
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_slut = %s WHERE guild_id = %s AND user_id = %s", (gain, now, interaction.guild.id, interaction.user.id))
-                    await conn.commit()
+                await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4", gain, now, interaction.guild.id, interaction.user.id)
             desc = f"> **The hustle was successful. Earned {gain:,} {cfg['currency_symbol']}!**"
             view = self._create_styled_container("SUCCESS", "Hustle Paid", desc)
         await interaction.followup.send(view=view)
@@ -301,18 +278,14 @@ class Economy(commands.Cog):
         if random.randint(1, 100) <= cfg['rob_fail_rate']:
             fine = random.randint(400, 1000)
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet - %s, last_rob = %s WHERE guild_id = %s AND user_id = %s", (fine, now, interaction.guild.id, interaction.user.id))
-                    await conn.commit()
+                await conn.execute("UPDATE economy_users SET wallet = wallet - $1, last_rob = $2 WHERE guild_id = $3 AND user_id = $4", fine, now, interaction.guild.id, interaction.user.id)
             desc = f"> **Heist blown! You were caught and paid {fine} {cfg['currency_symbol']} in legal fees.**"
             view = self._create_styled_container("ERROR", "Heist Failed", desc)
         else:
             stolen = random.randint(100, int(vic['wallet'] * 0.45))
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, last_rob = %s WHERE guild_id = %s AND user_id = %s", (stolen, now, interaction.guild.id, interaction.user.id))
-                    await cursor.execute("UPDATE economy_users SET wallet = wallet - %s WHERE guild_id = %s AND user_id = %s", (stolen, interaction.guild.id, target.id))
-                    await conn.commit()
+                await conn.execute("UPDATE economy_users SET wallet = wallet + $1, last_rob = $2 WHERE guild_id = $3 AND user_id = $4", stolen, now, interaction.guild.id, interaction.user.id)
+                await conn.execute("UPDATE economy_users SET wallet = wallet - $1 WHERE guild_id = $2 AND user_id = $3", stolen, interaction.guild.id, target.id)
             desc = f"> **Successful heist! Snatched {stolen:,} {cfg['currency_symbol']} from {target.mention}!**"
             view = self._create_styled_container("SUCCESS", "Clean Job", desc)
         await interaction.followup.send(view=view)
@@ -332,9 +305,7 @@ class Economy(commands.Cog):
             return await interaction.followup.send(view=view)
             
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet - %s, bank = bank + %s WHERE guild_id = %s AND user_id = %s", (amt, amt, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet - $1, bank = bank + $2 WHERE guild_id = $3 AND user_id = $4", amt, amt, interaction.guild.id, interaction.user.id)
         desc = f"> **Stored {amt:,} {cfg['currency_symbol']} in the vault security system.**"
         await interaction.followup.send(view=self._create_styled_container("SUCCESS", "Vault Deposit", desc))
 
@@ -353,9 +324,7 @@ class Economy(commands.Cog):
             return await interaction.followup.send(view=view)
             
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s, bank = bank - %s WHERE guild_id = %s AND user_id = %s", (amt, amt, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1, bank = bank - $2 WHERE guild_id = $3 AND user_id = $4", amt, amt, interaction.guild.id, interaction.user.id)
         desc = f"> **Released {amt:,} {cfg['currency_symbol']} into your active wallet.**"
         await interaction.followup.send(view=self._create_styled_container("SUCCESS", "Vault Withdrawal", desc))
 
@@ -390,18 +359,16 @@ class Economy(commands.Cog):
         recipient_data = await self._get_user_data(interaction.guild.id, member.id)
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                # Deduct from sender
-                await cursor.execute(
-                    "UPDATE economy_users SET wallet = wallet - %s WHERE guild_id = %s AND user_id = %s",
-                    (amount, interaction.guild.id, interaction.user.id)
-                )
-                # Add to recipient
-                await cursor.execute(
-                    "UPDATE economy_users SET wallet = wallet + %s WHERE guild_id = %s AND user_id = %s",
-                    (amount, interaction.guild.id, member.id)
-                )
-                await conn.commit()
+            # Deduct from sender
+            await conn.execute(
+                "UPDATE economy_users SET wallet = wallet - $1 WHERE guild_id = $2 AND user_id = $3",
+                amount, interaction.guild.id, interaction.user.id
+            )
+            # Add to recipient
+            await conn.execute(
+                "UPDATE economy_users SET wallet = wallet + $1 WHERE guild_id = $2 AND user_id = $3",
+                amount, interaction.guild.id, member.id
+            )
         
         desc = f"> **Transferred {amount:,} {cfg['currency_symbol']} to {member.mention}.**"
         view = self._create_styled_container("SUCCESS", "Transfer Complete", desc)
@@ -444,9 +411,7 @@ class Economy(commands.Cog):
             status, msg = "ERROR", f"No Luck. Lost {bet:,}."
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("UPDATE economy_users SET wallet = wallet + %s WHERE guild_id = %s AND user_id = %s", (win, interaction.guild.id, interaction.user.id))
-                await conn.commit()
+            await conn.execute("UPDATE economy_users SET wallet = wallet + $1 WHERE guild_id = $2 AND user_id = $3", win, interaction.guild.id, interaction.user.id)
         
         desc = (
             f"**Spin Results**\n"
@@ -480,7 +445,7 @@ class Economy(commands.Cog):
             "rob_cooldown", "rob_min_wallet", "rob_fail_rate", "slots_fail_rate"
         }
         
-        updates, params = [], []
+        updates, params = [], [interaction.guild.id]
         mappings = {
             "currency_name": currency_name, "currency_symbol": symbol, "daily_amount": daily_amount,
             "work_min": work_min, "work_max": work_max, "work_cooldown": work_cooldown,
@@ -491,18 +456,16 @@ class Economy(commands.Cog):
             "rob_cooldown": rob_cooldown, "rob_min_wallet": rob_min_wallet, "rob_fail_rate": rob_fail_rate,
             "slots_fail_rate": slots_fail_rate
         }
+        
         for col, val in mappings.items():
             if val is not None and col in ALLOWED_COLUMNS:
-                updates.append(f"{col} = %s")
                 params.append(val)
+                updates.append(f"{col} = ${len(params)}")
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("INSERT INTO economy_settings (guild_id) VALUES (%s) ON DUPLICATE KEY UPDATE guild_id=guild_id", (interaction.guild.id,))
-                if updates:
-                    params.append(interaction.guild.id)
-                    await cursor.execute(f"UPDATE economy_settings SET {', '.join(updates)} WHERE guild_id = %s", tuple(params))
-                await conn.commit()
+            await conn.execute("INSERT INTO economy_settings (guild_id) VALUES ($1) ON CONFLICT (guild_id) DO UPDATE SET guild_id=EXCLUDED.guild_id", interaction.guild.id)
+            if updates:
+                await conn.execute(f"UPDATE economy_settings SET {', '.join(updates)} WHERE guild_id = $1", *params)
                 
         self._settings_cache.pop(interaction.guild.id, None)
         desc = "> **Changes applied!**"
