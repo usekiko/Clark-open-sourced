@@ -9,6 +9,8 @@ import sys
 # --- Initialization ---
 load_dotenv()
 
+print("[Clark] v1.0.0 starting up...")
+
 class MyBot(commands.AutoShardedBot):
     def __init__(self):
         intents = discord.Intents.default()
