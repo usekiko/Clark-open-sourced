@@ -27,5 +27,5 @@ jobs:
             git reset --hard origin/main
             find . -type d -name "__pycache__" -exec rm -rf {} +
             find . -type f -name "*.pyc" -delete
-            pip3 install -r requirements.txt --break-system-packages
+            venv/bin/pip install -r requirements.txt
             pm2 restart clark
