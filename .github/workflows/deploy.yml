@@ -28,4 +28,4 @@ jobs:
             find . -type d -name "__pycache__" -exec rm -rf {} +
             find . -type f -name "*.pyc" -delete
             pip3 install -r requirements.txt --break-system-packages
-            pm2 restart clark-bot
+            pm2 restart clark
