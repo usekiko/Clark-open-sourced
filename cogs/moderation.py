@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands, ui
 import datetime
-import aiomysql
 
 class Colors:
     RESET = '\033[0m'
@@ -82,37 +81,31 @@ class Moderation(commands.Cog):
                 return
 
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS mod_logs (
-                            log_id INT AUTO_INCREMENT PRIMARY KEY, guild_case_id INT NOT NULL, guild_id VARCHAR(255) NOT NULL,
-                            moderator_id VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, action_type VARCHAR(50) NOT NULL,
-                            reason TEXT, timestamp BIGINT NOT NULL, expires_at BIGINT NULL,
-                            UNIQUE KEY idx_guild_case (guild_id, guild_case_id), INDEX idx_guild_user (guild_id, user_id)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-                    """)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS mod_logs (
+                        log_id SERIAL PRIMARY KEY, guild_case_id INT NOT NULL, guild_id VARCHAR(255) NOT NULL,
+                        moderator_id VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, action_type VARCHAR(50) NOT NULL,
+                        reason TEXT, timestamp BIGINT NOT NULL, expires_at BIGINT NULL,
+                        UNIQUE (guild_id, guild_case_id)
+                    );
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_guild_user ON mod_logs (guild_id, user_id);
+                """)
             print(f"{Colors.GREEN}[SUCCESS]      cogs.moderation.py has successfully created all tables{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR]         Failed to initialize moderation logs table: {e}{Colors.RESET}")
 
     async def log_case(self, interaction: discord.Interaction, action_type: str, user: discord.User, reason: str, expires_at=None) -> int:
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await conn.begin()
-                try:
-                    await cursor.execute("SELECT MAX(guild_case_id) as max_id FROM mod_logs WHERE guild_id = %s FOR UPDATE", (str(interaction.guild.id),))
-                    result = await cursor.fetchone()
-                    next_case_id = (result['max_id'] or 0) + 1
-                    await cursor.execute(
-                        "INSERT INTO mod_logs (guild_case_id, guild_id, moderator_id, user_id, action_type, reason, timestamp, expires_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                        (next_case_id, str(interaction.guild.id), str(interaction.user.id), str(user.id), action_type, reason, int(datetime.datetime.now().timestamp()), expires_at)
-                    )
-                    await conn.commit()
-                    return next_case_id
-                except Exception as e:
-                    await conn.rollback()
-                    print(f"{Colors.RED}[ERROR]         Error logging case: {e}{Colors.RESET}")
-                    raise
+            async with conn.transaction():
+                result = await conn.fetchrow("SELECT MAX(guild_case_id) as max_id FROM mod_logs WHERE guild_id = $1", str(interaction.guild.id))
+                next_case_id = (result['max_id'] or 0) + 1
+                await conn.execute(
+                    "INSERT INTO mod_logs (guild_case_id, guild_id, moderator_id, user_id, action_type, reason, timestamp, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    next_case_id, str(interaction.guild.id), str(interaction.user.id), str(user.id), action_type, reason, int(datetime.datetime.now().timestamp()), expires_at
+                )
+                return next_case_id
 
     # --- Moderation Commands ---
 
@@ -305,15 +298,12 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn_remove(self, interaction: discord.Interaction, case_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("SELECT log_id, action_type, user_id FROM mod_logs WHERE guild_case_id = %s AND guild_id = %s", (case_id, str(interaction.guild.id)))
-                record = await cursor.fetchone()
-                if not record or record.get('action_type') != 'WARN':
-                    response_view = self._create_styled_view("ERROR", "Not Found", "Warning case does not exist.")
-                    return await interaction.response.send_message(view=response_view, ephemeral=True)
-                
-                await cursor.execute("DELETE FROM mod_logs WHERE log_id = %s", (record['log_id'],))
-                await conn.commit()
+            record = await conn.fetchrow("SELECT log_id, action_type, user_id FROM mod_logs WHERE guild_case_id = $1 AND guild_id = $2", case_id, str(interaction.guild.id))
+            if not record or record.get('action_type') != 'WARN':
+                response_view = self._create_styled_view("ERROR", "Not Found", "Warning case does not exist.")
+                return await interaction.response.send_message(view=response_view, ephemeral=True)
+            
+            await conn.execute("DELETE FROM mod_logs WHERE log_id = $1", record['log_id'])
         
         response_view = self._create_styled_view("SUCCESS", "Warning Removed", f"Case #{case_id} removed from record.")
         await interaction.response.send_message(view=response_view)
@@ -393,24 +383,22 @@ class Moderation(commands.Cog):
 
         history_content = ""
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT guild_case_id, action_type, reason, timestamp, moderator_id FROM mod_logs WHERE guild_id = %s AND user_id = %s ORDER BY timestamp DESC LIMIT 10",
-                    (str(interaction.guild.id), str(member.id))
-                )
-                records = await cursor.fetchall()
-                if records:
-                    for record in records:
-                        mod_id = int(record['moderator_id'])
-                        mod = interaction.guild.get_member(mod_id) or f"ID: {mod_id}"
-                        action_time = f"<t:{record['timestamp']}:f>"
-                        history_content += (
-                            f"**Case #{record['guild_case_id']} — {record['action_type']}**\n"
-                            f"- Reason: {record['reason']}\n"
-                            f"- Moderator: {mod}\n"
-                            f"- Date: {action_time}\n\n"
-                        )
-                    items.append(ui.TextDisplay(history_content))
+            records = await conn.fetch(
+                "SELECT guild_case_id, action_type, reason, timestamp, moderator_id FROM mod_logs WHERE guild_id = $1 AND user_id = $2 ORDER BY timestamp DESC LIMIT 10",
+                str(interaction.guild.id), str(member.id)
+            )
+            if records:
+                for record in records:
+                    mod_id = int(record['moderator_id'])
+                    mod = interaction.guild.get_member(mod_id) or f"ID: {mod_id}"
+                    action_time = f"<t:{record['timestamp']}:f>"
+                    history_content += (
+                        f"**Case #{record['guild_case_id']} — {record['action_type']}**\n"
+                        f"- Reason: {record['reason']}\n"
+                        f"- Moderator: {mod}\n"
+                        f"- Date: {action_time}\n\n"
+                    )
+                items.append(ui.TextDisplay(history_content))
 
         if not history_content:
             items.append(ui.TextDisplay("No moderation history found for this user."))

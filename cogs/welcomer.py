@@ -13,21 +13,18 @@ class Welcome(commands.GroupCog, name="welcome"):
         """Forces the database to update without needing HeidiSQL."""
         if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    # Rename old table if it exists to avoid conflicts, then create fresh
-                    try:
-                        await cur.execute("ALTER TABLE welcome_config RENAME TO old_welcome_config")
-                    except:
-                        pass # Table might not exist or already renamed
-                    
-                    await cur.execute("""
-                        CREATE TABLE IF NOT EXISTS welcome_config (
-                            guild_id BIGINT PRIMARY KEY,
-                            channel_id BIGINT,
-                            custom_text TEXT
-                        )
-                    """)
-                    await conn.commit()
+                try:
+                    await conn.execute("ALTER TABLE welcome_config RENAME TO old_welcome_config")
+                except:
+                    pass # Table might not exist or already renamed
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS welcome_config (
+                        guild_id BIGINT PRIMARY KEY,
+                        channel_id BIGINT,
+                        custom_text TEXT
+                    )
+                """)
 
     def format_welcome(self, text, member: discord.Member):
         """Handles pings, server names, and manual newlines."""
@@ -49,13 +46,11 @@ class Welcome(commands.GroupCog, name="welcome"):
         try:
             query = """
             INSERT INTO welcome_config (guild_id, channel_id, custom_text)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), custom_text = VALUES(custom_text)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (guild_id) DO UPDATE SET channel_id = EXCLUDED.channel_id, custom_text = EXCLUDED.custom_text
             """
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(query, (itx.guild.id, channel.id, message))
-                    await conn.commit()
+                await conn.execute(query, itx.guild.id, channel.id, message)
             
             preview = self.format_welcome(message, itx.user)
             await itx.followup.send(f"**Welcome Configured!**\n**Channel:** {channel.mention}\n**Preview:**\n{preview}", ephemeral=True)
@@ -66,15 +61,13 @@ class Welcome(commands.GroupCog, name="welcome"):
     async def on_member_join(self, member: discord.Member):
         if not self.bot.db_pool: return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("SELECT channel_id, custom_text FROM welcome_config WHERE guild_id = %s", (member.guild.id,))
-                cfg = await cur.fetchone()
+            cfg = await conn.fetchrow("SELECT channel_id, custom_text FROM welcome_config WHERE guild_id = $1", member.guild.id)
 
-        if cfg and cfg[0]:
-            channel = self.bot.get_channel(cfg[0]) or await self.bot.fetch_channel(cfg[0])
+        if cfg and cfg['channel_id']:
+            channel = self.bot.get_channel(cfg['channel_id']) or await self.bot.fetch_channel(cfg['channel_id'])
             if channel:
                 try:
-                    await channel.send(self.format_welcome(cfg[1], member))
+                    await channel.send(self.format_welcome(cfg['custom_text'], member))
                 except discord.Forbidden:
                     logger.warning(f"No permission to send welcome in {member.guild.name}")
 

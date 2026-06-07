@@ -113,7 +113,7 @@ class MessageSender(commands.GroupCog, name="message"):
 
         except Exception as e:
             logger.error(f"Message Send Error: {e}")
-            await itx.followup.send(f"An error occurred, contact bot developer (expertkiko): {e}", ephemeral=True)
+            await itx.followup.send(f"An error occurred, contact bot developer (usekiko): {e}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(MessageSender(bot))

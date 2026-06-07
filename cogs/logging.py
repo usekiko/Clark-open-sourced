@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from discord import ui
-import asyncpg
 import json
 import asyncio
 from typing import List, Optional, Literal
@@ -56,15 +55,13 @@ class Logging(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS logging_config (
-                        guild_id BIGINT PRIMARY KEY,
-                        log_channel_id BIGINT NOT NULL,
-                        enabled_events TEXT NOT NULL
-                    );
-                """)
-            await conn.commit()
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS logging_config (
+                    guild_id BIGINT PRIMARY KEY,
+                    log_channel_id BIGINT NOT NULL,
+                    enabled_events TEXT NOT NULL
+                );
+            """)
 
     def _create_styled_view(self, status: Literal["SUCCESS", "ERROR", "INFO"], title: str, description: str) -> ui.LayoutView:
         header = ui.TextDisplay(f"**{title}**")
@@ -79,13 +76,12 @@ class Logging(commands.Cog):
 
     async def _get_log_config(self, guild_id: int) -> Optional[tuple[int, List[str]]]:
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("SELECT log_channel_id, enabled_events FROM logging_config WHERE guild_id = %s", (guild_id,))
-                row = await cursor.fetchone()
-                if row:
-                    log_channel_id, enabled_events_json = row
-                    enabled_events = json.loads(enabled_events_json)
-                    return log_channel_id, enabled_events
+            row = await conn.fetchrow("SELECT log_channel_id, enabled_events FROM logging_config WHERE guild_id = $1", guild_id)
+            if row:
+                log_channel_id = row['log_channel_id']
+                enabled_events_json = row['enabled_events']
+                enabled_events = json.loads(enabled_events_json)
+                return log_channel_id, enabled_events
         return None
 
     async def _send_log_message(self, guild_id: int, event_type: str, status: Literal["SUCCESS", "ERROR", "INFO"], title: str, description: str):
@@ -133,14 +129,12 @@ class Logging(commands.Cog):
                 selected_events = interaction.data.get('values', [])
                 
                 async with self.bot.db_pool.acquire() as conn:
-                    async with conn.cursor() as cursor:
-                        await cursor.execute("""
-                            INSERT INTO logging_config (guild_id, log_channel_id, enabled_events)
-                            VALUES (%s, %s, %s)
-                            ON DUPLICATE KEY UPDATE
-                            log_channel_id = %s, enabled_events = %s;
-                        """, (interaction.guild_id, log_channel.id, json.dumps(selected_events), log_channel.id, json.dumps(selected_events)))
-                    await conn.commit()
+                    await conn.execute("""
+                        INSERT INTO logging_config (guild_id, log_channel_id, enabled_events)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (guild_id) DO UPDATE SET
+                        log_channel_id = EXCLUDED.log_channel_id, enabled_events = EXCLUDED.enabled_events;
+                    """, interaction.guild_id, log_channel.id, json.dumps(selected_events))
                 
                 enabled_events_str = "\n".join([f"> {LOGGABLE_EVENTS[e]}" for e in selected_events])
                 description = (
@@ -177,10 +171,9 @@ class Logging(commands.Cog):
     async def log_disable(self, interaction: discord.Interaction):
         rows_affected = 0
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("DELETE FROM logging_config WHERE guild_id = %s", (interaction.guild_id,))
-                rows_affected = cursor.rowcount
-            await conn.commit()
+            status = await conn.execute("DELETE FROM logging_config WHERE guild_id = $1", interaction.guild_id)
+            # DELETE n where n is rows_affected. e.g. 'DELETE 1'
+            rows_affected = int(status.split()[-1])
 
         if rows_affected == 0:
             response_view = self._create_styled_view("ERROR", "Not Configured", "> Logging is not enabled on this server.")

@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import aiomysql
 import json
 import traceback
 
@@ -43,10 +42,8 @@ class SelfRoleSelect(ui.Select):
             return await interaction.followup.send("Database connection failed.", ephemeral=True)
 
         async with interaction.client.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                # Fetch valid roles for THIS specific message
-                await cursor.execute("SELECT role_ids FROM self_roles WHERE message_id = %s", (interaction.message.id,))
-                data = await cursor.fetchone()
+            # Fetch valid roles for THIS specific message
+            data = await conn.fetchrow("SELECT role_ids FROM self_roles WHERE message_id = $1", interaction.message.id)
 
         if not data:
             return await interaction.followup.send("This self-role menu is no longer active.", ephemeral=True)
@@ -158,15 +155,14 @@ class SelfRoles(commands.Cog):
                 return
 
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS self_roles (
-                            message_id BIGINT PRIMARY KEY,
-                            guild_id BIGINT NOT NULL,
-                            channel_id BIGINT NOT NULL,
-                            role_ids JSON NOT NULL
-                        )
-                    """)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS self_roles (
+                        message_id BIGINT PRIMARY KEY,
+                        guild_id BIGINT NOT NULL,
+                        channel_id BIGINT NOT NULL,
+                        role_ids JSONB NOT NULL
+                    )
+                """)
             print(f"{Colors.GREEN}[SUCCESS] cogs.selfroles.py initialized tables.{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Failed to init self_roles table: {e}{Colors.RESET}")
@@ -223,12 +219,10 @@ class SelfRoles(commands.Cog):
         
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "INSERT INTO self_roles (message_id, guild_id, channel_id, role_ids) VALUES (%s, %s, %s, %s)",
-                        (message.id, interaction.guild.id, interaction.channel.id, json.dumps(role_ids))
-                    )
-                    await conn.commit()
+                await conn.execute(
+                    "INSERT INTO self_roles (message_id, guild_id, channel_id, role_ids) VALUES ($1, $2, $3, $4)",
+                    message.id, interaction.guild.id, interaction.channel.id, json.dumps(role_ids)
+                )
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Failed to save selfrole to DB: {e}{Colors.RESET}")
 

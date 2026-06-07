@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import aiomysql
 import json
 import random
 import math
@@ -54,40 +53,38 @@ class Leveling(commands.Cog):
 
 
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS levels (
-                            guild_id BIGINT NOT NULL,
-                            user_id BIGINT NOT NULL,
-                            xp BIGINT DEFAULT 0,
-                            level INT DEFAULT 0,
-                            last_msg BIGINT DEFAULT 0,
-                            PRIMARY KEY (guild_id, user_id)
-                        )
-                    """)
-                    
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS leveling_settings (
-                            guild_id BIGINT PRIMARY KEY,
-                            enabled BOOLEAN DEFAULT FALSE,
-                            xp_min INT DEFAULT 15,
-                            xp_max INT DEFAULT 25,
-                            cooldown INT DEFAULT 60,
-                            channel_blacklist JSON NULL,
-                            role_blacklist JSON NULL,
-                            levelup_channel_id BIGINT DEFAULT NULL
-                        )
-                    """)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS levels (
+                        guild_id BIGINT NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        xp BIGINT DEFAULT 0,
+                        level INT DEFAULT 0,
+                        last_msg BIGINT DEFAULT 0,
+                        PRIMARY KEY (guild_id, user_id)
+                    )
+                """)
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS leveling_settings (
+                        guild_id BIGINT PRIMARY KEY,
+                        enabled BOOLEAN DEFAULT FALSE,
+                        xp_min INT DEFAULT 15,
+                        xp_max INT DEFAULT 25,
+                        cooldown INT DEFAULT 60,
+                        channel_blacklist JSONB NULL,
+                        role_blacklist JSONB NULL,
+                        levelup_channel_id BIGINT DEFAULT NULL
+                    )
+                """)
 
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS level_rewards (
-                            guild_id BIGINT NOT NULL,
-                            level INT NOT NULL,
-                            role_id BIGINT NOT NULL,
-                            PRIMARY KEY (guild_id, level)
-                        )
-                    """)
-                    await conn.commit()
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS level_rewards (
+                        guild_id BIGINT NOT NULL,
+                        level INT NOT NULL,
+                        role_id BIGINT NOT NULL,
+                        PRIMARY KEY (guild_id, level)
+                    )
+                """)
             print(f"{Colors.GREEN}[SUCCESS] cogs.leveling.py initialized (Clean UI).{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Failed to init leveling tables: {e}{Colors.RESET}")
@@ -129,20 +126,19 @@ class Leveling(commands.Cog):
             
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor(aiomysql.DictCursor) as cursor:
-                    # Ensure row exists
-                    await cursor.execute("""
-                        INSERT INTO leveling_settings (guild_id, enabled) 
-                        VALUES (%s, 0) 
-                        ON DUPLICATE KEY UPDATE guild_id=guild_id
-                    """, (guild_id,))
-                    await conn.commit()
-                    # Fetch fresh data
-                    await cursor.execute("SELECT * FROM leveling_settings WHERE guild_id = %s", (guild_id,))
-                    settings = await cursor.fetchone()
-                    if settings:
-                        self._settings_cache[guild_id] = settings
-                    return settings
+                # Ensure row exists
+                await conn.execute("""
+                    INSERT INTO leveling_settings (guild_id, enabled) 
+                    VALUES ($1, FALSE) 
+                    ON CONFLICT (guild_id) DO NOTHING
+                """, guild_id)
+                
+                # Fetch fresh data
+                settings = await conn.fetchrow("SELECT * FROM leveling_settings WHERE guild_id = $1", guild_id)
+                if settings:
+                    settings_dict = dict(settings)
+                    self._settings_cache[guild_id] = settings_dict
+                    return settings_dict
         except Exception as e:
             print(f"{Colors.RED}[ERROR] [Leveling] Failed to fetch settings for guild {guild_id}: {e}{Colors.RESET}")
             return None
@@ -171,43 +167,37 @@ class Leveling(commands.Cog):
         if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
             try:
                 async with self.bot.db_pool.acquire() as conn:
-                    async with conn.cursor(aiomysql.DictCursor) as cursor:
-                        xp_gain = random.randint(settings['xp_min'], settings['xp_max'])
-                        now_ts = int(time.time())
+                    xp_gain = random.randint(settings['xp_min'], settings['xp_max'])
+                    now_ts = int(time.time())
 
-                        await cursor.execute("""
-                            INSERT INTO levels (guild_id, user_id, xp, level, last_msg) 
-                            VALUES (%s, %s, %s, %s, %s)
-                            ON DUPLICATE KEY UPDATE xp = xp + %s, last_msg = %s
-                        """, (message.guild.id, message.author.id, xp_gain, 0, now_ts, xp_gain, now_ts))
+                    await conn.execute("""
+                        INSERT INTO levels (guild_id, user_id, xp, level, last_msg) 
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (guild_id, user_id) DO UPDATE SET xp = levels.xp + $6, last_msg = $7
+                    """, message.guild.id, message.author.id, xp_gain, 0, now_ts, xp_gain, now_ts)
+                    
+                    user_data = await conn.fetchrow("SELECT xp, level FROM levels WHERE guild_id = $1 AND user_id = $2", message.guild.id, message.author.id)
+                    
+                    actual_level = self._get_level_from_xp(user_data['xp'])
+
+                    if actual_level > user_data['level']:
+                        await conn.execute("UPDATE levels SET level = $1 WHERE guild_id = $2 AND user_id = $3", actual_level, message.guild.id, message.author.id)
                         
-                        await cursor.execute("SELECT xp, level FROM levels WHERE guild_id = %s AND user_id = %s", (message.guild.id, message.author.id))
-                        user_data = await cursor.fetchone()
-                        
-                        actual_level = self._get_level_from_xp(user_data['xp'])
+                        target_id = settings['levelup_channel_id']
+                        target_channel = message.guild.get_channel(target_id) if target_id else message.channel
 
-                        if actual_level > user_data['level']:
-                            await cursor.execute("UPDATE levels SET level = %s WHERE guild_id = %s AND user_id = %s", (actual_level, message.guild.id, message.author.id))
-                            await conn.commit()
-                            
-                            target_id = settings['levelup_channel_id']
-                            target_channel = message.guild.get_channel(target_id) if target_id else message.channel
+                        if target_channel:
+                            desc = f"Congratulations {message.author.mention}! You've reached Level {actual_level}!"
+                            view = self._create_response_container("Leveled Up!", desc, "LEVELUP")
+                            try: await target_channel.send(view=view)
+                            except discord.Forbidden: pass
 
-                            if target_channel:
-                                desc = f"Congratulations {message.author.mention}! You've reached Level {actual_level}!"
-                                view = self._create_response_container("Leveled Up!", desc, "LEVELUP")
-                                try: await target_channel.send(view=view)
+                        reward = await conn.fetchrow("SELECT role_id FROM level_rewards WHERE guild_id = $1 AND level = $2", message.guild.id, actual_level)
+                        if reward:
+                            role = message.guild.get_role(reward['role_id'])
+                            if role:
+                                try: await message.author.add_roles(role)
                                 except discord.Forbidden: pass
-
-                            await cursor.execute("SELECT role_id FROM level_rewards WHERE guild_id = %s AND level = %s", (message.guild.id, actual_level))
-                            reward = await cursor.fetchone()
-                            if reward:
-                                role = message.guild.get_role(reward['role_id'])
-                                if role:
-                                    try: await message.author.add_roles(role)
-                                    except discord.Forbidden: pass
-                        else:
-                            await conn.commit()
             except Exception as e:
                 print(f"{Colors.RED}[ERROR] Leveling on_message: {e}{Colors.RESET}")
 
@@ -218,8 +208,6 @@ class Leveling(commands.Cog):
         member = member or interaction.user
         await interaction.response.defer()
         
-
-
         settings = await self._get_settings(interaction.guild.id)
 
         if not settings or not settings['enabled']:
@@ -228,15 +216,12 @@ class Leveling(commands.Cog):
             return await interaction.followup.send(view=view)
 
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("SELECT xp, level FROM levels WHERE guild_id = %s AND user_id = %s", (interaction.guild.id, member.id))
-                data = await cursor.fetchone()
-                
-                rank_str = "Unranked"
-                if data:
-                    await cursor.execute("SELECT COUNT(*) + 1 as `rank` FROM levels WHERE guild_id = %s AND xp > %s", (interaction.guild.id, data['xp']))
-                    r_data = await cursor.fetchone()
-                    if r_data: rank_str = f"#{r_data['rank']}"
+            data = await conn.fetchrow("SELECT xp, level FROM levels WHERE guild_id = $1 AND user_id = $2", interaction.guild.id, member.id)
+            
+            rank_str = "Unranked"
+            if data:
+                r_data = await conn.fetchrow("SELECT COUNT(*) + 1 as rank FROM levels WHERE guild_id = $1 AND xp > $2", interaction.guild.id, data['xp'])
+                if r_data: rank_str = f"#{r_data['rank']}"
             
         xp = data['xp'] if data else 0
         level = self._get_level_from_xp(xp)
@@ -259,8 +244,6 @@ class Leveling(commands.Cog):
     async def leaderboard(self, interaction: discord.Interaction):
         await interaction.response.defer()
         
-
-        
         settings = await self._get_settings(interaction.guild.id)
 
         if not settings or not settings['enabled']:
@@ -269,9 +252,7 @@ class Leveling(commands.Cog):
             return await interaction.followup.send(view=view)
 
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("SELECT user_id, xp FROM levels WHERE guild_id = %s ORDER BY xp DESC LIMIT 10", (interaction.guild.id,))
-                top_users = await cursor.fetchall()
+            top_users = await conn.fetch("SELECT user_id, xp FROM levels WHERE guild_id = $1 ORDER BY xp DESC LIMIT 10", interaction.guild.id)
 
         if not top_users:
             desc = "No one has earned experience points yet."
@@ -298,20 +279,19 @@ class Leveling(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("INSERT INTO leveling_settings (guild_id, enabled) VALUES (%s, 0) ON DUPLICATE KEY UPDATE guild_id=guild_id", (interaction.guild.id,))
-                updates, params = [], []
-                if enabled is not None: updates.append("enabled = %s"); params.append(int(enabled))
-                if levelup_channel: updates.append("levelup_channel_id = %s"); params.append(levelup_channel.id)
-                if xp_min: updates.append("xp_min = %s"); params.append(xp_min)
-                if xp_max: updates.append("xp_max = %s"); params.append(xp_max)
-                if updates:
-                    params.append(interaction.guild.id)
-                    await cursor.execute(f"UPDATE leveling_settings SET {', '.join(updates)} WHERE guild_id = %s", tuple(params))
-                    await conn.commit()
-                await cursor.execute("SELECT * FROM leveling_settings WHERE guild_id = %s", (interaction.guild.id,))
-                new_settings = await cursor.fetchone()
-                self._settings_cache[interaction.guild.id] = new_settings
+            await conn.execute("INSERT INTO leveling_settings (guild_id, enabled) VALUES ($1, FALSE) ON CONFLICT (guild_id) DO NOTHING", interaction.guild.id)
+            updates, params = [], []
+            if enabled is not None: updates.append(f"enabled = ${len(params)+1}"); params.append(enabled)
+            if levelup_channel: updates.append(f"levelup_channel_id = ${len(params)+1}"); params.append(levelup_channel.id)
+            if xp_min: updates.append(f"xp_min = ${len(params)+1}"); params.append(xp_min)
+            if xp_max: updates.append(f"xp_max = ${len(params)+1}"); params.append(xp_max)
+            if updates:
+                params.append(interaction.guild.id)
+                await conn.execute(f"UPDATE leveling_settings SET {', '.join(updates)} WHERE guild_id = ${len(params)}", *params)
+            
+            new_settings = await conn.fetchrow("SELECT * FROM leveling_settings WHERE guild_id = $1", interaction.guild.id)
+            if new_settings:
+                self._settings_cache[interaction.guild.id] = dict(new_settings)
 
         desc = "Settings updated successfully."
         view = self._create_response_container("Configuration Updated", desc, "SUCCESS")

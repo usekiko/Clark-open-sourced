@@ -50,9 +50,7 @@ class Settings(commands.Cog):
     async def _clear_user_history(self, guild_id: str, user_id: int):
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("DELETE FROM chat_messages WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
-                    await conn.commit()
+                await conn.execute("DELETE FROM chat_messages WHERE guild_id = $1 AND user_id = $2", guild_id, str(user_id))
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Error clearing history: {e}{Colors.RESET}")
 
@@ -68,13 +66,11 @@ class Settings(commands.Cog):
         if not await self._check_db_ready(interaction): return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "INSERT INTO servers (guild_id, guild_name, clark_mode, custom_instruction) "
-                        "VALUES (%s, %s, %s, NULL) ON DUPLICATE KEY UPDATE clark_mode=%s, custom_instruction=NULL",
-                        (str(interaction.guild.id), interaction.guild.name, mode, mode)
-                    )
-                    await conn.commit()
+                await conn.execute(
+                    "INSERT INTO servers (guild_id, guild_name, clark_mode, custom_instruction) "
+                    "VALUES ($1, $2, $3, NULL) ON CONFLICT (guild_id) DO UPDATE SET clark_mode=$3, custom_instruction=NULL",
+                    str(interaction.guild.id), interaction.guild.name, mode
+                )
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
             view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
@@ -94,13 +90,11 @@ class Settings(commands.Cog):
         if not await self._check_db_ready(interaction): return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "INSERT INTO servers (guild_id, guild_name, custom_instruction, clark_mode) "
-                        "VALUES (%s, %s, %s, NULL) ON DUPLICATE KEY UPDATE custom_instruction=%s, clark_mode=NULL",
-                        (str(interaction.guild.id), interaction.guild.name, instruction, instruction)
-                    )
-                    await conn.commit()
+                await conn.execute(
+                    "INSERT INTO servers (guild_id, guild_name, custom_instruction, clark_mode) "
+                    "VALUES ($1, $2, $3, NULL) ON CONFLICT (guild_id) DO UPDATE SET custom_instruction=$3, clark_mode=NULL",
+                    str(interaction.guild.id), interaction.guild.name, instruction
+                )
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
             
@@ -115,12 +109,10 @@ class Settings(commands.Cog):
         if not await self._check_db_ready(interaction): return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute(
-                        "UPDATE servers SET custom_instruction = NULL, clark_mode = 'friendly' WHERE guild_id = %s",
-                        (str(interaction.guild.id),)
-                    )
-                    await conn.commit()
+                await conn.execute(
+                    "UPDATE servers SET custom_instruction = NULL, clark_mode = 'friendly' WHERE guild_id = $1",
+                    str(interaction.guild.id)
+                )
             
             await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
             view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
@@ -133,9 +125,7 @@ class Settings(commands.Cog):
     async def chatbot_on(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES (%s, %s, TRUE) ON DUPLICATE KEY UPDATE chatbot_enabled=TRUE", (str(interaction.guild.id), interaction.guild.name))
-                await conn.commit()
+            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, TRUE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=TRUE", str(interaction.guild.id), interaction.guild.name)
         view = self._create_styled_view('SUCCESS', "AI Responses Enabled", "Clark will now respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -144,9 +134,7 @@ class Settings(commands.Cog):
     async def chatbot_off(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES (%s, %s, FALSE) ON DUPLICATE KEY UPDATE chatbot_enabled=FALSE", (str(interaction.guild.id), interaction.guild.name))
-                await conn.commit()
+            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, FALSE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=FALSE", str(interaction.guild.id), interaction.guild.name)
         view = self._create_styled_view('SUCCESS', "AI Responses Disabled", "Clark will no longer respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -155,9 +143,7 @@ class Settings(commands.Cog):
     async def add_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("INSERT IGNORE INTO allowed_channels (guild_id, channel_id) VALUES (%s, %s)", (str(interaction.guild.id), channel.id))
-                await conn.commit()
+            await conn.execute("INSERT INTO allowed_channels (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", str(interaction.guild.id), channel.id)
         view = self._create_styled_view('SUCCESS', "Channel Whitelisted", f"{channel.mention} added to allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -166,9 +152,7 @@ class Settings(commands.Cog):
     async def remove_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("DELETE FROM allowed_channels WHERE guild_id = %s AND channel_id = %s", (str(interaction.guild.id), channel.id))
-                await conn.commit()
+            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1 AND channel_id = $2", str(interaction.guild.id), channel.id)
         view = self._create_styled_view('SUCCESS', "Channel Removed", f"{channel.mention} removed from allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -177,9 +161,7 @@ class Settings(commands.Cog):
     async def clear_channels(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("DELETE FROM allowed_channels WHERE guild_id = %s", (str(interaction.guild.id),))
-                await conn.commit()
+            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1", str(interaction.guild.id))
         view = self._create_styled_view('SUCCESS', "Channel Restrictions Cleared", "Clark will respond in all channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -188,14 +170,12 @@ class Settings(commands.Cog):
     async def list_channels(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("SELECT channel_id FROM allowed_channels WHERE guild_id = %s", (str(interaction.guild.id),))
-                res = await cursor.fetchall()
+            res = await conn.fetch("SELECT channel_id FROM allowed_channels WHERE guild_id = $1", str(interaction.guild.id))
         
         if not res: 
             view = self._create_styled_view('SUCCESS', "Channel Access", "No restrictions configured. Clark responds in all channels.", interaction)
         else:
-            mentions = [interaction.guild.get_channel(int(r[0])).mention for r in res if interaction.guild.get_channel(int(r[0]))]
+            mentions = [interaction.guild.get_channel(int(r['channel_id'])).mention for r in res if interaction.guild.get_channel(int(r['channel_id']))]
             view = self._create_styled_view('SUCCESS', "Allowed Channels", "\n".join(mentions), interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 

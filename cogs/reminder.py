@@ -4,7 +4,6 @@ from discord import app_commands
 import datetime
 import re
 import os
-import aiomysql
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,29 +19,19 @@ class ReminderCog(commands.Cog):
     def cog_unload(self):
         self.check_reminders.cancel()
 
-    async def get_db_connection(self):
-        return await aiomysql.connect(
-            host=os.getenv("MYSQL_HOST"),
-            user=os.getenv("MYSQL_USER"),
-            password=os.getenv("MYSQL_PASSWORD"),
-            db=os.getenv("MYSQL_DATABASE"),
-            port=int(os.getenv("MYSQL_PORT")),
-            autocommit=True
-        )
-
     async def init_db(self):
-        conn = await self.get_db_connection()
-        async with conn.cursor() as cursor:
-            await cursor.execute("""
+        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool:
+            return
+        async with self.bot.db_pool.acquire() as conn:
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS reminders_set (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     channel_id BIGINT NOT NULL,
                     reminder_text TEXT NOT NULL,
-                    expires_at DATETIME NOT NULL
+                    expires_at TIMESTAMP NOT NULL
                 )
             """)
-        conn.close()
 
     def parse_time(self, time_str):
         regex = r"(\d+)([wdhms])"
@@ -63,24 +52,27 @@ class ReminderCog(commands.Cog):
             await interaction.response.send_message("Invalid time format.", ephemeral=True)
             return
         expiration = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=seconds)
-        conn = await self.get_db_connection()
-        async with conn.cursor() as cursor:
-            await cursor.execute(
-                "INSERT INTO reminders_set (user_id, channel_id, reminder_text, expires_at) VALUES (%s, %s, %s, %s)",
-                (interaction.user.id, channel.id, message, expiration)
+        expiration = expiration.replace(tzinfo=None)
+        
+        if not self.bot.db_pool:
+            await interaction.response.send_message("Database connection error.", ephemeral=True)
+            return
+            
+        async with self.bot.db_pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO reminders_set (user_id, channel_id, reminder_text, expires_at) VALUES ($1, $2, $3, $4)",
+                interaction.user.id, channel.id, message, expiration
             )
-        conn.close()
         await interaction.response.send_message(f"Reminder set for {time} in {channel.mention}.")
 
     @tasks.loop(seconds=30)
     async def check_reminders(self):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        conn = await self.get_db_connection()
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("SELECT * FROM reminders_set WHERE expires_at <= %s", (now,))
-            expired = await cursor.fetchall()
+        now = datetime.datetime.utcnow()
+        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool:
+            return
+        async with self.bot.db_pool.acquire() as conn:
+            expired = await conn.fetch("SELECT * FROM reminders_set WHERE expires_at <= $1", now)
             if not expired:
-                conn.close()
                 return
             for row in expired:
                 target_channel = self.bot.get_channel(row["channel_id"])
@@ -90,8 +82,7 @@ class ReminderCog(commands.Cog):
                         await target_channel.send(f"Reminder for {user_mention}: {row['reminder_text']}")
                     except discord.Forbidden:
                         pass
-                await cursor.execute("DELETE FROM reminders_set WHERE id = %s", (row["id"],))
-        conn.close()
+                await conn.execute("DELETE FROM reminders_set WHERE id = $1", row["id"])
 
     @check_reminders.before_loop
     async def before_check_reminders(self):

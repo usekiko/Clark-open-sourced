@@ -12,20 +12,18 @@ class Goodbye(commands.GroupCog, name="goodbye"):
     async def cog_load(self):
         if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    try:
-                        await cur.execute("ALTER TABLE goodbye_config RENAME TO old_goodbye_config")
-                    except:
-                        pass
-                    
-                    await cur.execute("""
-                        CREATE TABLE IF NOT EXISTS goodbye_config (
-                            guild_id BIGINT PRIMARY KEY,
-                            channel_id BIGINT,
-                            custom_text TEXT
-                        )
-                    """)
-                    await conn.commit()
+                try:
+                    await conn.execute("ALTER TABLE goodbye_config RENAME TO old_goodbye_config")
+                except:
+                    pass
+                
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS goodbye_config (
+                        guild_id BIGINT PRIMARY KEY,
+                        channel_id BIGINT,
+                        custom_text TEXT
+                    )
+                """)
 
     def format_goodbye(self, text, member: discord.Member):
         if not text: return ""
@@ -45,13 +43,11 @@ class Goodbye(commands.GroupCog, name="goodbye"):
         try:
             query = """
             INSERT INTO goodbye_config (guild_id, channel_id, custom_text)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), custom_text = VALUES(custom_text)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (guild_id) DO UPDATE SET channel_id = EXCLUDED.channel_id, custom_text = EXCLUDED.custom_text
             """
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(query, (itx.guild.id, channel.id, message))
-                    await conn.commit()
+                await conn.execute(query, itx.guild.id, channel.id, message)
             
             preview = self.format_goodbye(message, itx.user)
             await itx.followup.send(f"**Goodbye Configured!**\n<:preview:1454536798402383952> **Preview:**\n{preview}", ephemeral=True)
@@ -62,15 +58,13 @@ class Goodbye(commands.GroupCog, name="goodbye"):
     async def on_member_remove(self, member: discord.Member):
         if not self.bot.db_pool: return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("SELECT channel_id, custom_text FROM goodbye_config WHERE guild_id = %s", (member.guild.id,))
-                cfg = await cur.fetchone()
+            cfg = await conn.fetchrow("SELECT channel_id, custom_text FROM goodbye_config WHERE guild_id = $1", member.guild.id)
 
-        if cfg and cfg[0]:
-            channel = self.bot.get_channel(cfg[0]) or await self.bot.fetch_channel(cfg[0])
+        if cfg and cfg['channel_id']:
+            channel = self.bot.get_channel(cfg['channel_id']) or await self.bot.fetch_channel(cfg['channel_id'])
             if channel:
                 try:
-                    await channel.send(self.format_goodbye(cfg[1], member))
+                    await channel.send(self.format_goodbye(cfg['custom_text'], member))
                 except discord.Forbidden:
                     pass
 

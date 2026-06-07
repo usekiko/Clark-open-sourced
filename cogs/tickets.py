@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import aiomysql
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
@@ -140,79 +139,79 @@ class Tickets(commands.Cog):
 
     async def setup_database(self):
         await self.bot.wait_until_ready()
+        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool: return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    # Ticket categories
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS ticket_categories (
-                            category_id INT AUTO_INCREMENT PRIMARY KEY,
-                            guild_id BIGINT NOT NULL,
-                            name VARCHAR(50) NOT NULL,
-                            description VARCHAR(255),
-                            emoji VARCHAR(10),
-                            support_role_id BIGINT,
-                            priority INT DEFAULT 0,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_guild (guild_id)
-                        )
-                    """)
-                    
-                    # Tickets
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tickets (
-                            ticket_id INT AUTO_INCREMENT PRIMARY KEY,
-                            guild_ticket_number INT NOT NULL,
-                            guild_id BIGINT NOT NULL,
-                            user_id BIGINT NOT NULL,
-                            channel_id BIGINT,
-                            category VARCHAR(50),
-                            subject VARCHAR(100),
-                            description TEXT,
-                            status ENUM('open', 'claimed', 'escalated', 'closed') DEFAULT 'open',
-                            claimed_by BIGINT,
-                            priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            closed_at TIMESTAMP NULL,
-                            resolution_notes TEXT,
-                            satisfaction_rating INT,
-                            transcript_url VARCHAR(255),
-                            UNIQUE KEY idx_guild_ticket (guild_id, guild_ticket_number),
-                            INDEX idx_user (user_id),
-                            INDEX idx_status (status)
-                        )
-                    """)
-                    
-                    # Ticket messages for transcript
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS ticket_messages (
-                            message_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                            ticket_id INT NOT NULL,
-                            user_id BIGINT NOT NULL,
-                            username VARCHAR(100),
-                            content TEXT,
-                            attachments TEXT,
-                            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_ticket (ticket_id)
-                        )
-                    """)
-                    
-                    # Ticket analytics
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS ticket_analytics (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            guild_id BIGINT NOT NULL,
-                            date DATE NOT NULL,
-                            tickets_created INT DEFAULT 0,
-                            tickets_closed INT DEFAULT 0,
-                            avg_response_time INT, -- in minutes
-                            avg_resolution_time INT, -- in minutes
-                            satisfaction_avg DECIMAL(3,2),
-                            UNIQUE KEY idx_guild_date (guild_id, date)
-                        )
-                    """)
-                    
-                    await conn.commit()
+                # Ticket categories
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ticket_categories (
+                        category_id SERIAL PRIMARY KEY,
+                        guild_id BIGINT NOT NULL,
+                        name VARCHAR(50) NOT NULL,
+                        description VARCHAR(255),
+                        emoji VARCHAR(10),
+                        support_role_id BIGINT,
+                        priority INT DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (guild_id, name)
+                    )
+                """)
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_cat_guild ON ticket_categories (guild_id)")
+                
+                # Tickets
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS tickets (
+                        ticket_id SERIAL PRIMARY KEY,
+                        guild_ticket_number INT NOT NULL,
+                        guild_id BIGINT NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        channel_id BIGINT,
+                        category VARCHAR(50),
+                        subject VARCHAR(100),
+                        description TEXT,
+                        status VARCHAR(20) CHECK (status IN ('open', 'claimed', 'escalated', 'closed')) DEFAULT 'open',
+                        claimed_by BIGINT,
+                        priority VARCHAR(20) CHECK (priority IN ('low', 'medium', 'high', 'urgent')) DEFAULT 'medium',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        closed_at TIMESTAMP NULL,
+                        resolution_notes TEXT,
+                        satisfaction_rating INT,
+                        transcript_url VARCHAR(255),
+                        UNIQUE (guild_id, guild_ticket_number)
+                    )
+                """)
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_tick_user ON tickets (user_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_tick_status ON tickets (status)")
+                
+                # Ticket messages for transcript
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ticket_messages (
+                        message_id SERIAL PRIMARY KEY,
+                        ticket_id INT NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        username VARCHAR(100),
+                        content TEXT,
+                        attachments TEXT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_ticket ON ticket_messages (ticket_id)")
+                
+                # Ticket analytics
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ticket_analytics (
+                        id SERIAL PRIMARY KEY,
+                        guild_id BIGINT NOT NULL,
+                        date DATE NOT NULL,
+                        tickets_created INT DEFAULT 0,
+                        tickets_closed INT DEFAULT 0,
+                        avg_response_time INT,
+                        avg_resolution_time INT,
+                        satisfaction_avg DECIMAL(3,2),
+                        UNIQUE (guild_id, date)
+                    )
+                """)
+                
             print(f"{Colors.GREEN}[SUCCESS]      Ticket system tables initialized.{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR]        Failed to initialize ticket tables: {e}{Colors.RESET}")
@@ -256,21 +255,18 @@ class Tickets(commands.Cog):
         
         # Get next ticket number for this guild
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT MAX(guild_ticket_number) as max_num FROM tickets WHERE guild_id = %s",
-                    (guild.id,)
-                )
-                result = await cursor.fetchone()
-                ticket_number = (result['max_num'] or 0) + 1
-                
-                # Create ticket in database
-                await cursor.execute("""
-                    INSERT INTO tickets (guild_ticket_number, guild_id, user_id, category, subject, description, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, 'open')
-                """, (ticket_number, guild.id, user.id, category, subject, description))
-                await conn.commit()
-                ticket_id = cursor.lastrowid
+            result = await conn.fetchrow(
+                "SELECT MAX(guild_ticket_number) as max_num FROM tickets WHERE guild_id = $1",
+                guild.id
+            )
+            ticket_number = (result['max_num'] or 0) + 1
+            
+            # Create ticket in database
+            ticket_id = await conn.fetchval("""
+                INSERT INTO tickets (guild_ticket_number, guild_id, user_id, category, subject, description, status)
+                VALUES ($1, $2, $3, $4, $5, $6, 'open')
+                RETURNING ticket_id
+            """, ticket_number, guild.id, user.id, category, subject, description)
 
         # Create ticket channel
         overwrites = {
@@ -281,16 +277,14 @@ class Tickets(commands.Cog):
         
         # Add support roles
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT support_role_id FROM ticket_categories WHERE guild_id = %s AND name = %s",
-                    (guild.id, category)
-                )
-                role_result = await cursor.fetchone()
-                if role_result and role_result['support_role_id']:
-                    role = guild.get_role(role_result['support_role_id'])
-                    if role:
-                        overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            role_result = await conn.fetchrow(
+                "SELECT support_role_id FROM ticket_categories WHERE guild_id = $1 AND name = $2",
+                guild.id, category
+            )
+            if role_result and role_result['support_role_id']:
+                role = guild.get_role(role_result['support_role_id'])
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
         category_channel = discord.utils.get(guild.categories, name="Tickets")
         if not category_channel:
@@ -306,12 +300,10 @@ class Tickets(commands.Cog):
         
         # Update ticket with channel_id
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "UPDATE tickets SET channel_id = %s WHERE ticket_id = %s",
-                    (ticket_channel.id, ticket_id)
-                )
-                await conn.commit()
+            await conn.execute(
+                "UPDATE tickets SET channel_id = $1 WHERE ticket_id = $2",
+                ticket_channel.id, ticket_id
+            )
 
         # Send ticket info in channel
         ticket_embed = discord.Embed(
@@ -346,28 +338,25 @@ class Tickets(commands.Cog):
 
     async def claim_ticket(self, interaction: discord.Interaction, ticket_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM tickets WHERE ticket_id = %s",
-                    (ticket_id,)
+            ticket = await conn.fetchrow(
+                "SELECT * FROM tickets WHERE ticket_id = $1",
+                ticket_id
+            )
+            
+            if not ticket:
+                return await interaction.response.send_message("Ticket not found.", ephemeral=True)
+            
+            if ticket['claimed_by']:
+                claimed_by = interaction.guild.get_member(ticket['claimed_by'])
+                return await interaction.response.send_message(
+                    f"This ticket is already claimed by {claimed_by.mention if claimed_by else 'Unknown'}.", 
+                    ephemeral=True
                 )
-                ticket = await cursor.fetchone()
-                
-                if not ticket:
-                    return await interaction.response.send_message("Ticket not found.", ephemeral=True)
-                
-                if ticket['claimed_by']:
-                    claimed_by = interaction.guild.get_member(ticket['claimed_by'])
-                    return await interaction.response.send_message(
-                        f"This ticket is already claimed by {claimed_by.mention if claimed_by else 'Unknown'}.", 
-                        ephemeral=True
-                    )
-                
-                await cursor.execute(
-                    "UPDATE tickets SET claimed_by = %s, status = 'claimed' WHERE ticket_id = %s",
-                    (interaction.user.id, ticket_id)
-                )
-                await conn.commit()
+            
+            await conn.execute(
+                "UPDATE tickets SET claimed_by = $1, status = 'claimed' WHERE ticket_id = $2",
+                interaction.user.id, ticket_id
+            )
         
         await interaction.response.send_message(
             f"✅ Ticket claimed by {interaction.user.mention}. They will handle this issue.",
@@ -381,13 +370,11 @@ class Tickets(commands.Cog):
         transcript = await self.generate_transcript(ticket_id, channel_id)
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("""
-                    UPDATE tickets 
-                    SET status = 'closed', closed_at = NOW(), resolution_notes = %s
-                    WHERE ticket_id = %s
-                """, (resolution, ticket_id))
-                await conn.commit()
+            await conn.execute("""
+                UPDATE tickets 
+                SET status = 'closed', closed_at = NOW(), resolution_notes = $1
+                WHERE ticket_id = $2
+            """, resolution, ticket_id)
         
         # Send transcript to log channel
         guild = interaction.guild
@@ -408,24 +395,22 @@ class Tickets(commands.Cog):
         
         # Send to user
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT user_id FROM tickets WHERE ticket_id = %s",
-                    (ticket_id,)
-                )
-                result = await cursor.fetchone()
-                if result:
-                    user_obj = self.bot.get_user(result['user_id'])
-                    if user_obj:
-                        try:
-                            dm_embed = discord.Embed(
-                                title="Your Ticket Has Been Closed",
-                                description=f"**Ticket ID:** #{ticket_id}\n**Resolution:**\n{resolution}\n\nThank you for contacting support!",
-                                color=0x5a63f7
-                            )
-                            await user_obj.send(embed=dm_embed)
-                        except:
-                            pass
+            result = await conn.fetchrow(
+                "SELECT user_id FROM tickets WHERE ticket_id = $1",
+                ticket_id
+            )
+            if result:
+                user_obj = self.bot.get_user(result['user_id'])
+                if user_obj:
+                    try:
+                        dm_embed = discord.Embed(
+                            title="Your Ticket Has Been Closed",
+                            description=f"**Ticket ID:** #{ticket_id}\n**Resolution:**\n{resolution}\n\nThank you for contacting support!",
+                            color=0x5a63f7
+                        )
+                        await user_obj.send(embed=dm_embed)
+                    except:
+                        pass
 
         await interaction.followup.send(f"✅ Ticket closed. Transcript saved.")
         
@@ -440,12 +425,10 @@ class Tickets(commands.Cog):
 
     async def escalate_ticket(self, interaction: discord.Interaction, ticket_id: int, reason: str):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "UPDATE tickets SET status = 'escalated', priority = 'high' WHERE ticket_id = %s",
-                    (ticket_id,)
-                )
-                await conn.commit()
+            await conn.execute(
+                "UPDATE tickets SET status = 'escalated', priority = 'high' WHERE ticket_id = $1",
+                ticket_id
+            )
         
         await interaction.response.send_message(
             f"⚡ Ticket escalated!\n**Reason:** {reason}\n\n<@&{interaction.guild.owner_id}> - This ticket requires immediate attention!",
@@ -459,15 +442,13 @@ class Tickets(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT category, subject, description FROM tickets WHERE ticket_id = %s",
-                    (ticket_id,)
-                )
-                ticket = await cursor.fetchone()
-                
-                if not ticket:
-                    return await interaction.followup.send("Ticket not found.", ephemeral=True)
+            ticket = await conn.fetchrow(
+                "SELECT category, subject, description FROM tickets WHERE ticket_id = $1",
+                ticket_id
+            )
+            
+            if not ticket:
+                return await interaction.followup.send("Ticket not found.", ephemeral=True)
 
         try:
             prompt = f"""You are a helpful support assistant. Based on this support ticket, provide 3 suggested responses:
@@ -506,18 +487,15 @@ Format each as: [Tone]: [Response]"""
 
     async def generate_transcript(self, ticket_id: int, channel_id: int) -> str:
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM ticket_messages WHERE ticket_id = %s ORDER BY timestamp",
-                    (ticket_id,)
-                )
-                messages = await cursor.fetchall()
-                
-                await cursor.execute(
-                    "SELECT * FROM tickets WHERE ticket_id = %s",
-                    (ticket_id,)
-                )
-                ticket = await cursor.fetchone()
+            messages = await conn.fetch(
+                "SELECT * FROM ticket_messages WHERE ticket_id = $1 ORDER BY timestamp",
+                ticket_id
+            )
+            
+            ticket = await conn.fetchrow(
+                "SELECT * FROM tickets WHERE ticket_id = $1",
+                ticket_id
+            )
         
         transcript = f"""
 ========================================
@@ -549,14 +527,12 @@ MESSAGES:
 
     async def show_user_tickets(self, interaction: discord.Interaction):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("""
-                    SELECT ticket_id, guild_ticket_number, category, subject, status, created_at
-                    FROM tickets 
-                    WHERE user_id = %s AND guild_id = %s AND status != 'closed'
-                    ORDER BY created_at DESC
-                """, (interaction.user.id, interaction.guild.id))
-                tickets = await cursor.fetchall()
+            tickets = await conn.fetch("""
+                SELECT ticket_id, guild_ticket_number, category, subject, status, created_at
+                FROM tickets 
+                WHERE user_id = $1 AND guild_id = $2 AND status != 'closed'
+                ORDER BY created_at DESC
+            """, interaction.user.id, interaction.guild.id)
         
         if not tickets:
             view = self._create_container_view("No Active Tickets", "You don't have any open tickets.")
@@ -591,50 +567,49 @@ MESSAGES:
             if message.attachments:
                 attachments = [a.url for a in message.attachments]
             
-            async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
+            if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
+                async with self.bot.db_pool.acquire() as conn:
+                    await conn.execute("""
                         INSERT INTO ticket_messages (ticket_id, user_id, username, content, attachments)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (
+                        VALUES ($1, $2, $3, $4, $5)
+                    """, 
                         ticket_info['ticket_id'],
                         message.author.id,
                         str(message.author),
                         message.content,
                         json.dumps(attachments) if attachments else None
-                    ))
-                    await conn.commit()
+                    )
 
     @app_commands.command(name="ticket-stats", description="View ticket statistics for the server.")
     @app_commands.checks.has_permissions(manage_channels=True)
     async def ticket_stats(self, interaction: discord.Interaction, days: int = 7):
         await interaction.response.defer()
-        
+        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool:
+            return await interaction.followup.send("Database not configured.", ephemeral=True)
+            
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                # Total tickets
-                await cursor.execute("""
-                    SELECT COUNT(*) as total FROM tickets 
-                    WHERE guild_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                """, (interaction.guild.id, days))
-                total = (await cursor.fetchone())['total']
-                
-                # By status
-                await cursor.execute("""
-                    SELECT status, COUNT(*) as count FROM tickets 
-                    WHERE guild_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                    GROUP BY status
-                """, (interaction.guild.id, days))
-                status_counts = {row['status']: row['count'] for row in await cursor.fetchall()}
-                
-                # By category
-                await cursor.execute("""
-                    SELECT category, COUNT(*) as count FROM tickets 
-                    WHERE guild_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                    GROUP BY category
-                    ORDER BY count DESC
-                """, (interaction.guild.id, days))
-                category_counts = await cursor.fetchall()
+            # Total tickets
+            res = await conn.fetchrow("""
+                SELECT COUNT(*) as total FROM tickets 
+                WHERE guild_id = $1 AND created_at >= NOW() - interval '1 day' * $2
+            """, interaction.guild.id, days)
+            total = res['total']
+            
+            # By status
+            status_rows = await conn.fetch("""
+                SELECT status, COUNT(*) as count FROM tickets 
+                WHERE guild_id = $1 AND created_at >= NOW() - interval '1 day' * $2
+                GROUP BY status
+            """, interaction.guild.id, days)
+            status_counts = {row['status']: row['count'] for row in status_rows}
+            
+            # By category
+            category_counts = await conn.fetch("""
+                SELECT category, COUNT(*) as count FROM tickets 
+                WHERE guild_id = $1 AND created_at >= NOW() - interval '1 day' * $2
+                GROUP BY category
+                ORDER BY count DESC
+            """, interaction.guild.id, days)
         
         content = f"**Ticket Statistics (Last {days} days)**\n\n"
         content += f"**Total Tickets:** {total}\n"
@@ -661,21 +636,19 @@ class TicketConfigModal(ui.Modal, title="Ticket Configuration"):
 
     async def on_submit(self, interaction: discord.Interaction):
         async with self.cog.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                role_id = int(str(self.support_role)) if str(self.support_role) else None
-                await cursor.execute("""
-                    INSERT INTO ticket_categories (guild_id, name, description, support_role_id)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE description = %s, support_role_id = %s
-                """, (
-                    interaction.guild.id,
-                    str(self.category_name),
-                    str(self.category_desc),
-                    role_id,
-                    str(self.category_desc),
-                    role_id
-                ))
-                await conn.commit()
+            role_id = int(str(self.support_role)) if str(self.support_role) else None
+            await conn.execute("""
+                INSERT INTO ticket_categories (guild_id, name, description, support_role_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (guild_id, name) DO UPDATE SET description = $5, support_role_id = $6
+            """, 
+                interaction.guild.id,
+                str(self.category_name),
+                str(self.category_desc),
+                role_id,
+                str(self.category_desc),
+                role_id
+            )
         
         await interaction.response.send_message(
             f"✅ Category '{self.category_name}' configured successfully!",

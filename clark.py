@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import asyncio
 from dotenv import load_dotenv
-import aiomysql
+import asyncpg
 import os
 import sys
 
@@ -30,14 +30,14 @@ class MyBot(commands.AutoShardedBot):
     async def setup_hook(self):
         # 1. Connect to Database first
         try:
-            self.db_pool = await aiomysql.create_pool(
-                host=os.getenv('MYSQL_HOST'),
-                user=os.getenv('MYSQL_USER'),
-                password=os.getenv('MYSQL_PASSWORD'),
-                db=os.getenv('MYSQL_DATABASE'),
-                port=int(os.getenv('MYSQL_PORT', 3306)),
-                minsize=5, 
-                maxsize=20 
+            self.db_pool = await asyncpg.create_pool(
+                host=os.getenv('PG_HOST', 'localhost'),
+                user=os.getenv('PG_USER'),
+                password=os.getenv('PG_PASSWORD'),
+                database=os.getenv('PG_DATABASE'),
+                port=int(os.getenv('PG_PORT', 5432)),
+                min_size=5,
+                max_size=20
             )
             print("[SUCCESS] Database connection pool created.")
         except Exception as e:
@@ -56,7 +56,6 @@ class MyBot(commands.AutoShardedBot):
                         print(f'[FAIL] Failed to load {filename}: {e}')
 
         # 3. Sync Commands Globally
-        # This sends your commands to Discord so they appear in the slash command menu
         try:
             print("[SYNC] Attempting to sync global commands...")
             synced = await self.tree.sync()
@@ -66,8 +65,7 @@ class MyBot(commands.AutoShardedBot):
 
     async def close(self):
         if self.db_pool:
-            self.db_pool.close()
-            await self.db_pool.wait_closed()
+            await self.db_pool.close()
             print("[POOL] Database pool closed.")
         await super().close()
 

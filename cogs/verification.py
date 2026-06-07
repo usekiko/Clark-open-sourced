@@ -133,9 +133,7 @@ class Verification(commands.Cog):
     async def _get_verification_config(self, guild_id: str):
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("SELECT * FROM verification_config WHERE guild_id = %s", (guild_id,))
-                    return await cursor.fetchone()
+                return await conn.fetchrow("SELECT * FROM verification_config WHERE guild_id = $1", guild_id)
         except Exception as e:
             print(f"Error fetching verification config: {e}")
             return None
@@ -145,22 +143,20 @@ class Verification(commands.Cog):
         if not hasattr(self.bot, 'db_pool') or self.bot.db_pool is None: return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS verification_config (
-                            guild_id VARCHAR(20) PRIMARY KEY,
-                            channel_id BIGINT,
-                            unverified_role_id BIGINT,
-                            verified_role_id BIGINT,
-                            message_id BIGINT,
-                            custom_message TEXT,
-                            log_channel_id BIGINT,
-                            button_label VARCHAR(100),
-                            button_style VARCHAR(20),
-                            panel_title VARCHAR(100)
-                        )
-                    """)
-                    await conn.commit()
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS verification_config (
+                        guild_id VARCHAR(20) PRIMARY KEY,
+                        channel_id BIGINT,
+                        unverified_role_id BIGINT,
+                        verified_role_id BIGINT,
+                        message_id BIGINT,
+                        custom_message TEXT,
+                        log_channel_id BIGINT,
+                        button_label VARCHAR(100),
+                        button_style VARCHAR(20),
+                        panel_title VARCHAR(100)
+                    )
+                """)
         except Exception as e:
             print(f"Error creating verification tables: {e}")
 
@@ -169,20 +165,18 @@ class Verification(commands.Cog):
         if not hasattr(self.bot, 'db_pool') or self.bot.db_pool is None: return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("SELECT * FROM verification_config")
-                    configs = await cursor.fetchall()
-                    for config in configs:
-                        guild = self.bot.get_guild(int(config[0]))
-                        if not guild: continue
-                        channel = guild.get_channel(config[1])
-                        if not channel: continue
-                        try:
-                            message = await channel.fetch_message(config[4])
-                            style = BUTTON_COLORS.get(config[8], discord.ButtonStyle.success)
-                            view = self._create_verification_container(config[9], config[5], config[7], style)
-                            await message.edit(view=view)
-                        except: continue
+                configs = await conn.fetch("SELECT * FROM verification_config")
+                for config in configs:
+                    guild = self.bot.get_guild(int(config['guild_id']))
+                    if not guild: continue
+                    channel = guild.get_channel(config['channel_id'])
+                    if not channel: continue
+                    try:
+                        message = await channel.fetch_message(config['message_id'])
+                        style = BUTTON_COLORS.get(config['button_style'], discord.ButtonStyle.success)
+                        view = self._create_verification_container(config['panel_title'], config['custom_message'], config['button_label'], style)
+                        await message.edit(view=view)
+                    except: continue
         except Exception as e:
             print(f"Error restoring persistent views: {e}")
 
@@ -229,22 +223,18 @@ class Verification(commands.Cog):
             sent_message = await channel.send(view=view)
 
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.execute("""
-                        INSERT INTO verification_config 
-                        (guild_id, channel_id, unverified_role_id, verified_role_id, message_id, custom_message, 
-                        log_channel_id, button_label, button_style, panel_title) 
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON DUPLICATE KEY UPDATE 
-                        channel_id=%s, unverified_role_id=%s, verified_role_id=%s, message_id=%s, custom_message=%s,
-                        log_channel_id=%s, button_label=%s, button_style=%s, panel_title=%s
-                    """, (
-                        str(interaction.guild.id), channel.id, unverified_role.id, verified_role.id, sent_message.id, message,
-                        log_channel.id if log_channel else None, button_label, button_color, panel_title,
-                        channel.id, unverified_role.id, verified_role.id, sent_message.id, message,
-                        log_channel.id if log_channel else None, button_label, button_color, panel_title
-                    ))
-                    await conn.commit()
+                await conn.execute("""
+                    INSERT INTO verification_config 
+                    (guild_id, channel_id, unverified_role_id, verified_role_id, message_id, custom_message, 
+                    log_channel_id, button_label, button_style, panel_title) 
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ON CONFLICT (guild_id) DO UPDATE SET 
+                    channel_id=EXCLUDED.channel_id, unverified_role_id=EXCLUDED.unverified_role_id, verified_role_id=EXCLUDED.verified_role_id, message_id=EXCLUDED.message_id, custom_message=EXCLUDED.custom_message,
+                    log_channel_id=EXCLUDED.log_channel_id, button_label=EXCLUDED.button_label, button_style=EXCLUDED.button_style, panel_title=EXCLUDED.panel_title
+                """, 
+                    str(interaction.guild.id), channel.id, unverified_role.id, verified_role.id, sent_message.id, message,
+                    log_channel.id if log_channel else None, button_label, button_color, panel_title
+                )
             
             res_view = self._create_styled_view('SUCCESS', "Verification setup successful!", f"Message sent to {channel.mention}.")
             await interaction.followup.send(view=res_view, ephemeral=True)
@@ -256,17 +246,15 @@ class Verification(commands.Cog):
     async def verification_disable(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("DELETE FROM verification_config WHERE guild_id = %s", (str(interaction.guild.id),))
-                await conn.commit()
+            await conn.execute("DELETE FROM verification_config WHERE guild_id = $1", str(interaction.guild.id))
         await interaction.response.send_message(view=self._create_styled_view('SUCCESS', "Verification Disabled", "System is disabled!."), ephemeral=True)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         if member.bot: return
         config = await self._get_verification_config(str(member.guild.id))
-        if not config or not config[2]: return
-        role = member.guild.get_role(config[2])
+        if not config or not config['unverified_role_id']: return
+        role = member.guild.get_role(config['unverified_role_id'])
         if role:
             try: await member.add_roles(role)
             except: pass
@@ -275,8 +263,8 @@ class Verification(commands.Cog):
         config = await self._get_verification_config(str(interaction.guild.id))
         if not config: return
 
-        v_role = interaction.guild.get_role(config[3])
-        if v_role in interaction.user.roles:
+        v_role = interaction.guild.get_role(config['verified_role_id'])
+        if v_role and v_role in interaction.user.roles:
             await interaction.response.send_message(view=self._create_styled_view('INFO', "Already verified.", "You no longer need to verify."), ephemeral=True)
             return
 
@@ -291,15 +279,15 @@ class Verification(commands.Cog):
             answer = num1 - num2
             
         question_str = f"{num1} {operation} {num2}"
-        modal_title = config[9] if config[9] else "Verification - Solve the Task"
+        modal_title = config['panel_title'] if config['panel_title'] else "Verification - Solve the Task"
         
-        await interaction.response.send_modal(VerificationModal(modal_title, question_str, answer, config[6], self))
+        await interaction.response.send_modal(VerificationModal(modal_title, question_str, answer, config['log_channel_id'], self))
 
     async def complete_verification(self, interaction: discord.Interaction):
         config = await self._get_verification_config(str(interaction.guild.id))
         if not config: return
-        u_role = interaction.guild.get_role(config[2])
-        v_role = interaction.guild.get_role(config[3])
+        u_role = interaction.guild.get_role(config['unverified_role_id'])
+        v_role = interaction.guild.get_role(config['verified_role_id'])
 
         try:
             if u_role and u_role in interaction.user.roles:

@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import aiomysql
 import json
 from datetime import datetime
 from typing import Optional, Dict, List
@@ -50,18 +49,16 @@ class FormBuilderModal(ui.Modal, title="Form Builder"):
         role_id = int(str(self.role_id)) if str(self.role_id) else None
         
         async with self.cog.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                if self.form_id:
-                    await cursor.execute("""
-                        UPDATE forms SET name = %s, description = %s, questions = %s, role_id = %s
-                        WHERE form_id = %s AND guild_id = %s
-                    """, (str(self.form_name), str(self.description), json.dumps(questions), role_id, self.form_id, interaction.guild.id))
-                else:
-                    await cursor.execute("""
-                        INSERT INTO forms (guild_id, name, description, questions, role_id, created_by)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (interaction.guild.id, str(self.form_name), str(self.description), json.dumps(questions), role_id, interaction.user.id))
-                await conn.commit()
+            if self.form_id:
+                await conn.execute("""
+                    UPDATE forms SET name = $1, description = $2, questions = $3, role_id = $4
+                    WHERE form_id = $5 AND guild_id = $6
+                """, str(self.form_name), str(self.description), json.dumps(questions), role_id, self.form_id, interaction.guild.id)
+            else:
+                await conn.execute("""
+                    INSERT INTO forms (guild_id, name, description, questions, role_id, created_by)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, interaction.guild.id, str(self.form_name), str(self.description), json.dumps(questions), role_id, interaction.user.id)
         
         action = "updated" if self.form_id else "created"
         await interaction.response.send_message(f"✅ Form '{self.form_name}' {action} successfully!", ephemeral=True)
@@ -143,59 +140,58 @@ class Forms(commands.Cog):
 
     async def setup_database(self):
         await self.bot.wait_until_ready()
+        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool: return
         try:
             async with self.bot.db_pool.acquire() as conn:
-                async with conn.cursor() as cursor:
-                    # Forms definitions
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS forms (
-                            form_id INT AUTO_INCREMENT PRIMARY KEY,
-                            guild_id BIGINT NOT NULL,
-                            name VARCHAR(50) NOT NULL,
-                            description VARCHAR(255),
-                            questions JSON NOT NULL,
-                            role_id BIGINT,
-                            approval_channel_id BIGINT,
-                            created_by BIGINT NOT NULL,
-                            is_active BOOLEAN DEFAULT TRUE,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_guild (guild_id),
-                            INDEX idx_active (is_active)
-                        )
-                    """)
-                    
-                    # Form submissions
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS form_submissions (
-                            submission_id INT AUTO_INCREMENT PRIMARY KEY,
-                            form_id INT NOT NULL,
-                            guild_id BIGINT NOT NULL,
-                            user_id BIGINT NOT NULL,
-                            answers JSON NOT NULL,
-                            status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
-                            reviewed_by BIGINT,
-                            review_notes TEXT,
-                            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            reviewed_at TIMESTAMP NULL,
-                            INDEX idx_form (form_id),
-                            INDEX idx_user (user_id),
-                            INDEX idx_status (status)
-                        )
-                    """)
-                    
-                    # Form submission logs
-                    await cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS form_logs (
-                            log_id INT AUTO_INCREMENT PRIMARY KEY,
-                            submission_id INT NOT NULL,
-                            action VARCHAR(50) NOT NULL,
-                            performed_by BIGINT NOT NULL,
-                            details TEXT,
-                            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    
-                    await conn.commit()
+                # Forms definitions
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS forms (
+                        form_id SERIAL PRIMARY KEY,
+                        guild_id BIGINT NOT NULL,
+                        name VARCHAR(50) NOT NULL,
+                        description VARCHAR(255),
+                        questions JSONB NOT NULL,
+                        role_id BIGINT,
+                        approval_channel_id BIGINT,
+                        created_by BIGINT NOT NULL,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_form_guild ON forms (guild_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_form_active ON forms (is_active)")
+                
+                # Form submissions
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS form_submissions (
+                        submission_id SERIAL PRIMARY KEY,
+                        form_id INT NOT NULL,
+                        guild_id BIGINT NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        answers JSONB NOT NULL,
+                        status VARCHAR(20) CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+                        reviewed_by BIGINT,
+                        review_notes TEXT,
+                        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        reviewed_at TIMESTAMP NULL
+                    )
+                """)
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_fsub_form ON form_submissions (form_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_fsub_user ON form_submissions (user_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_fsub_status ON form_submissions (status)")
+                
+                # Form submission logs
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS form_logs (
+                        log_id SERIAL PRIMARY KEY,
+                        submission_id INT NOT NULL,
+                        action VARCHAR(50) NOT NULL,
+                        performed_by BIGINT NOT NULL,
+                        details TEXT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
             print(f"{Colors.GREEN}[SUCCESS]      Forms system tables initialized.{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR]        Failed to initialize forms tables: {e}{Colors.RESET}")
@@ -216,12 +212,10 @@ class Forms(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def form_edit(self, interaction: discord.Interaction, form_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM forms WHERE form_id = %s AND guild_id = %s",
-                    (form_id, interaction.guild.id)
-                )
-                form = await cursor.fetchone()
+            form = await conn.fetchrow(
+                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2",
+                form_id, interaction.guild.id
+            )
         
         if not form:
             view = self._create_container_view("Error", "Form not found.")
@@ -231,7 +225,12 @@ class Forms(commands.Cog):
         modal.form_name.default = form['name']
         modal.description.default = form['description']
         modal.role_id.default = str(form['role_id']) if form['role_id'] else ""
-        modal.questions.default = json.dumps(json.loads(form['questions']))
+        
+        # Ensure questions JSON is loaded then dumped so it formats cleanly if stringified
+        if isinstance(form['questions'], str):
+            modal.questions.default = form['questions']
+        else:
+            modal.questions.default = json.dumps(form['questions'])
         
         await interaction.response.send_modal(modal)
 
@@ -239,16 +238,15 @@ class Forms(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def form_delete(self, interaction: discord.Interaction, form_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "DELETE FROM forms WHERE form_id = %s AND guild_id = %s",
-                    (form_id, interaction.guild.id)
-                )
-                await conn.commit()
-                
-                if cursor.rowcount == 0:
-                    view = self._create_container_view("Error", "Form not found.")
-                    return await interaction.response.send_message(view=view, ephemeral=True)
+            status = await conn.execute(
+                "DELETE FROM forms WHERE form_id = $1 AND guild_id = $2",
+                form_id, interaction.guild.id
+            )
+            rows_affected = int(status.split()[-1])
+            
+            if rows_affected == 0:
+                view = self._create_container_view("Error", "Form not found.")
+                return await interaction.response.send_message(view=view, ephemeral=True)
         
         view = self._create_container_view("Success", f"Form #{form_id} has been deleted.")
         await interaction.response.send_message(view=view, ephemeral=True)
@@ -256,12 +254,10 @@ class Forms(commands.Cog):
     @app_commands.command(name="form-list", description="List all forms in this server.")
     async def form_list(self, interaction: discord.Interaction):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT form_id, name, description, is_active FROM forms WHERE guild_id = %s",
-                    (interaction.guild.id,)
-                )
-                forms = await cursor.fetchall()
+            forms = await conn.fetch(
+                "SELECT form_id, name, description, is_active FROM forms WHERE guild_id = $1",
+                interaction.guild.id
+            )
         
         if not forms:
             view = self._create_container_view("No Forms", "No forms have been created yet.")
@@ -279,12 +275,10 @@ class Forms(commands.Cog):
     @app_commands.command(name="form-submit", description="Submit an application form.")
     async def form_submit(self, interaction: discord.Interaction, form_id: int):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM forms WHERE form_id = %s AND guild_id = %s AND is_active = TRUE",
-                    (form_id, interaction.guild.id)
-                )
-                form = await cursor.fetchone()
+            form = await conn.fetchrow(
+                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2 AND is_active = TRUE",
+                form_id, interaction.guild.id
+            )
         
         if not form:
             view = self._create_container_view("Error", "Form not found or inactive.")
@@ -292,36 +286,35 @@ class Forms(commands.Cog):
         
         # Check for existing pending submission
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("""
-                    SELECT submission_id FROM form_submissions
-                    WHERE form_id = %s AND user_id = %s AND status = 'pending'
-                """, (form_id, interaction.user.id))
-                existing = await cursor.fetchone()
+            existing = await conn.fetchrow("""
+                SELECT submission_id FROM form_submissions
+                WHERE form_id = $1 AND user_id = $2 AND status = 'pending'
+            """, form_id, interaction.user.id)
         
         if existing:
             view = self._create_container_view("Error", "You already have a pending application for this form.")
             return await interaction.response.send_message(view=view, ephemeral=True)
         
-        questions = json.loads(form['questions'])
+        if isinstance(form['questions'], str):
+            questions = json.loads(form['questions'])
+        else:
+            questions = form['questions'] # already list/dict from asyncpg jsonb
+
         await interaction.response.send_modal(FormSubmissionModal(self, form_id, questions))
 
     async def submit_form(self, interaction: discord.Interaction, form_id: int, answers: List[dict]):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("""
-                    INSERT INTO form_submissions (form_id, guild_id, user_id, answers)
-                    VALUES (%s, %s, %s, %s)
-                """, (form_id, interaction.guild.id, interaction.user.id, json.dumps(answers)))
-                await conn.commit()
-                submission_id = cursor.lastrowid
-                
-                # Get form info
-                await cursor.execute(
-                    "SELECT name, approval_channel_id FROM forms WHERE form_id = %s",
-                    (form_id,)
-                )
-                form_info = await cursor.fetchone()
+            submission_id = await conn.fetchval("""
+                INSERT INTO form_submissions (form_id, guild_id, user_id, answers)
+                VALUES ($1, $2, $3, $4)
+                RETURNING submission_id
+            """, form_id, interaction.guild.id, interaction.user.id, json.dumps(answers))
+            
+            # Get form info
+            form_info = await conn.fetchrow(
+                "SELECT name, approval_channel_id FROM forms WHERE form_id = $1",
+                form_id
+            )
         
         # Notify user
         view = self._create_container_view(
@@ -351,12 +344,10 @@ class Forms(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def form_panel(self, interaction: discord.Interaction, form_id: int, channel: discord.TextChannel):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM forms WHERE form_id = %s AND guild_id = %s",
-                    (form_id, interaction.guild.id)
-                )
-                form = await cursor.fetchone()
+            form = await conn.fetchrow(
+                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2",
+                form_id, interaction.guild.id
+            )
         
         if not form:
             view = self._create_container_view("Error", "Form not found.")
@@ -364,12 +355,10 @@ class Forms(commands.Cog):
         
         # Update approval channel
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "UPDATE forms SET approval_channel_id = %s WHERE form_id = %s",
-                    (channel.id, form_id)
-                )
-                await conn.commit()
+            await conn.execute(
+                "UPDATE forms SET approval_channel_id = $1 WHERE form_id = $2",
+                channel.id, form_id
+            )
         
         # Create panel
         embed = discord.Embed(
@@ -386,28 +375,24 @@ class Forms(commands.Cog):
 
     async def process_application(self, interaction: discord.Interaction, submission_id: int, user_id: int, form_id: int, decision: str, reason: str = None):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                # Get form info
-                await cursor.execute(
-                    "SELECT name, role_id FROM forms WHERE form_id = %s",
-                    (form_id,)
-                )
-                form = await cursor.fetchone()
-                
-                # Update submission
-                await cursor.execute("""
-                    UPDATE form_submissions 
-                    SET status = %s, reviewed_by = %s, review_notes = %s, reviewed_at = NOW()
-                    WHERE submission_id = %s
-                """, (decision, interaction.user.id, reason, submission_id))
-                
-                # Log action
-                await cursor.execute("""
-                    INSERT INTO form_logs (submission_id, action, performed_by, details)
-                    VALUES (%s, %s, %s, %s)
-                """, (submission_id, decision, interaction.user.id, reason))
-                
-                await conn.commit()
+            # Get form info
+            form = await conn.fetchrow(
+                "SELECT name, role_id FROM forms WHERE form_id = $1",
+                form_id
+            )
+            
+            # Update submission
+            await conn.execute("""
+                UPDATE form_submissions 
+                SET status = $1, reviewed_by = $2, review_notes = $3, reviewed_at = NOW()
+                WHERE submission_id = $4
+            """, decision, interaction.user.id, reason, submission_id)
+            
+            # Log action
+            await conn.execute("""
+                INSERT INTO form_logs (submission_id, action, performed_by, details)
+                VALUES ($1, $2, $3, $4)
+            """, submission_id, decision, interaction.user.id, reason)
         
         # Get user
         user = interaction.guild.get_member(user_id)
@@ -458,16 +443,14 @@ class Forms(commands.Cog):
         
         # Get user's application history
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("""
-                    SELECT fs.status, fs.submitted_at, f.name as form_name
-                    FROM form_submissions fs
-                    JOIN forms f ON fs.form_id = f.form_id
-                    WHERE fs.user_id = %s AND fs.guild_id = %s
-                    ORDER BY fs.submitted_at DESC
-                    LIMIT 5
-                """, (user_id, interaction.guild.id))
-                history = await cursor.fetchall()
+            history = await conn.fetch("""
+                SELECT fs.status, fs.submitted_at, f.name as form_name
+                FROM form_submissions fs
+                JOIN forms f ON fs.form_id = f.form_id
+                WHERE fs.user_id = $1 AND fs.guild_id = $2
+                ORDER BY fs.submitted_at DESC
+                LIMIT 5
+            """, user_id, interaction.guild.id)
         
         embed = discord.Embed(
             title=f"👤 Applicant Profile: {user.display_name}",
@@ -490,15 +473,13 @@ class Forms(commands.Cog):
     @app_commands.command(name="my-applications", description="View your application history.")
     async def my_applications(self, interaction: discord.Interaction):
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("""
-                    SELECT fs.submission_id, fs.status, fs.submitted_at, fs.reviewed_at, f.name as form_name
-                    FROM form_submissions fs
-                    JOIN forms f ON fs.form_id = f.form_id
-                    WHERE fs.user_id = %s AND fs.guild_id = %s
-                    ORDER BY fs.submitted_at DESC
-                """, (interaction.user.id, interaction.guild.id))
-                applications = await cursor.fetchall()
+            applications = await conn.fetch("""
+                SELECT fs.submission_id, fs.status, fs.submitted_at, fs.reviewed_at, f.name as form_name
+                FROM form_submissions fs
+                JOIN forms f ON fs.form_id = f.form_id
+                WHERE fs.user_id = $1 AND fs.guild_id = $2
+                ORDER BY fs.submitted_at DESC
+            """, interaction.user.id, interaction.guild.id)
         
         if not applications:
             view = self._create_container_view("No Applications", "You haven't submitted any applications yet.")
@@ -523,16 +504,14 @@ class Forms(commands.Cog):
         await interaction.response.defer()
         
         async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute("""
-                    SELECT fs.submission_id, fs.user_id, fs.submitted_at, f.name as form_name
-                    FROM form_submissions fs
-                    JOIN forms f ON fs.form_id = f.form_id
-                    WHERE fs.guild_id = %s AND fs.status = %s
-                    ORDER BY fs.submitted_at ASC
-                    LIMIT 10
-                """, (interaction.guild.id, status))
-                applications = await cursor.fetchall()
+            applications = await conn.fetch("""
+                SELECT fs.submission_id, fs.user_id, fs.submitted_at, f.name as form_name
+                FROM form_submissions fs
+                JOIN forms f ON fs.form_id = f.form_id
+                WHERE fs.guild_id = $1 AND fs.status = $2
+                ORDER BY fs.submitted_at ASC
+                LIMIT 10
+            """, interaction.guild.id, status)
         
         if not applications:
             view = self._create_container_view("No Applications", f"No {status} applications found.")
@@ -563,17 +542,19 @@ class FormSubmitView(ui.View):
     async def submit(self, interaction: discord.Interaction, button: ui.Button):
         # Reuse the form-submit command logic
         async with self.cog.bot.db_pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(
-                    "SELECT * FROM forms WHERE form_id = %s AND guild_id = %s AND is_active = TRUE",
-                    (self.form_id, interaction.guild.id)
-                )
-                form = await cursor.fetchone()
+            form = await conn.fetchrow(
+                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2 AND is_active = TRUE",
+                self.form_id, interaction.guild.id
+            )
         
         if not form:
             return await interaction.response.send_message("This form is no longer available.", ephemeral=True)
         
-        questions = json.loads(form['questions'])
+        if isinstance(form['questions'], str):
+            questions = json.loads(form['questions'])
+        else:
+            questions = form['questions']
+            
         await interaction.response.send_modal(FormSubmissionModal(self.cog, self.form_id, questions))
 
 async def setup(bot: commands.Bot):
