@@ -132,39 +132,47 @@ class Economy(commands.Cog):
     @app_commands.command(name="balance", description="Detailed audit of your wallet and vault liquidity.")
     async def balance(self, interaction: discord.Interaction, member: discord.Member = None):
         await interaction.response.defer()
-        user = member or interaction.user
-        data = await self._get_user_data(interaction.guild.id, user.id)
-        cfg  = await self.get_config(interaction.guild.id)
+        try:
+            user = member or interaction.user
+            data = await self._get_user_data(interaction.guild.id, user.id)
+            cfg  = await self.get_config(interaction.guild.id)
 
-        sym = cfg['currency_symbol']
-        desc = (
-            f"Wallet: {data['wallet']:,} {sym}\n"
-            f"Bank: {data['bank']:,} {sym}\n\n"
-            f"Total Balance: {data['wallet'] + data['bank']:,} {cfg['currency_name']}"
-        )
-        view = self._section_view(f"{user.display_name}'s Financial Profile", desc, user.display_avatar.url)
-        await interaction.followup.send(view=view)
+            sym = cfg['currency_symbol']
+            desc = (
+                f"Wallet: {data['wallet']:,} {sym}\n"
+                f"Bank: {data['bank']:,} {sym}\n\n"
+                f"Total Balance: {data['wallet'] + data['bank']:,} {cfg['currency_name']}"
+            )
+            view = self._section_view(f"{user.display_name}'s Financial Profile", desc, user.display_avatar.url)
+            await interaction.followup.send(view=view)
+        except Exception as e:
+            print(f"[ERROR] Balance command failed: {e}")
+            await interaction.followup.send(view=self._view("Error", f"Something went wrong: {e}"), ephemeral=True)
 
     @app_commands.command(name="daily", description="Claim your server-authorized daily stipend.")
     async def daily(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        cfg  = await self.get_config(interaction.guild_id)
-        data = await self._get_user_data(interaction.guild_id, interaction.user.id)
+        try:
+            cfg  = await self.get_config(interaction.guild_id)
+            data = await self._get_user_data(interaction.guild_id, interaction.user.id)
 
-        now = int(time.time())
-        if now < data['last_daily'] + 86400:
-            rem  = (data['last_daily'] + 86400) - now
-            view = self._view("Stipend Locked", f"The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m.")
-            return await interaction.followup.send(view=view)
+            now = int(time.time())
+            if now < data['last_daily'] + 86400:
+                rem  = (data['last_daily'] + 86400) - now
+                view = self._view("Stipend Locked", f"The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m.")
+                return await interaction.followup.send(view=view)
 
-        async with self.bot.db_pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE economy_users SET wallet = wallet + $1, last_daily = $2 WHERE guild_id = $3 AND user_id = $4",
-                cfg['daily_amount'], now, interaction.guild.id, interaction.user.id
-            )
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE economy_users SET wallet = wallet + $1, last_daily = $2 WHERE guild_id = $3 AND user_id = $4",
+                    cfg['daily_amount'], now, interaction.guild.id, interaction.user.id
+                )
 
-        view = self._view("Daily Stipend", f"Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.")
-        await interaction.followup.send(view=view)
+            view = self._view("Daily Stipend", f"Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.")
+            await interaction.followup.send(view=view)
+        except Exception as e:
+            print(f"[ERROR] Daily command failed: {e}")
+            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="work", description="Engage in professional labor for guaranteed income.")
     async def work(self, interaction: discord.Interaction):
@@ -199,68 +207,80 @@ class Economy(commands.Cog):
     @app_commands.command(name="stream", description="Host a livestream for viewer donations.")
     async def stream(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        cfg  = await self.get_config(interaction.guild_id)
-        data = await self._get_user_data(interaction.guild_id, interaction.user.id)
+        try:
+            cfg  = await self.get_config(interaction.guild_id)
+            data = await self._get_user_data(interaction.guild_id, interaction.user.id)
 
-        now          = int(time.time())
-        cooldown_sec = cfg['stream_cooldown'] * 60
-        if now < data['last_stream'] + cooldown_sec:
-            rem  = (data['last_stream'] + cooldown_sec) - now
-            view = self._view("Offline", f"Wait {rem//60}m {rem%60}s to stream again.")
-            return await interaction.followup.send(view=view)
+            now          = int(time.time())
+            cooldown_sec = cfg['stream_cooldown'] * 60
+            if now < data['last_stream'] + cooldown_sec:
+                rem  = (data['last_stream'] + cooldown_sec) - now
+                view = self._view("Offline", f"Wait {rem//60}m {rem%60}s to stream again.")
+                return await interaction.followup.send(view=view)
 
-        gain = random.randint(cfg['stream_min'], cfg['stream_max'])
-        async with self.bot.db_pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE economy_users SET wallet = wallet + $1, last_stream = $2 WHERE guild_id = $3 AND user_id = $4",
-                gain, now, interaction.guild.id, interaction.user.id
-            )
-        view = self._view("Stream Ended", f"Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.")
-        await interaction.followup.send(view=view)
+            gain = random.randint(cfg['stream_min'], cfg['stream_max'])
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE economy_users SET wallet = wallet + $1, last_stream = $2 WHERE guild_id = $3 AND user_id = $4",
+                    gain, now, interaction.guild.id, interaction.user.id
+                )
+            view = self._view("Stream Ended", f"Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.")
+            await interaction.followup.send(view=view)
+        except Exception as e:
+            print(f"[ERROR] Stream command failed: {e}")
+            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
 
-    @app_commands.command(name="hunt", description="Venturing into the forest for resources.")
+    @app_commands.command(name="hunt", description="Venture into the forest for resources.")
     async def hunt(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        cfg  = await self.get_config(interaction.guild_id)
-        data = await self._get_user_data(interaction.guild_id, interaction.user.id)
+        try:
+            cfg  = await self.get_config(interaction.guild_id)
+            data = await self._get_user_data(interaction.guild_id, interaction.user.id)
 
-        now          = int(time.time())
-        cooldown_sec = cfg['hunt_cooldown'] * 60
-        if now < data['last_hunt'] + cooldown_sec:
-            rem  = (data['last_hunt'] + cooldown_sec) - now
-            view = self._view("Forest Restock", f"The forest is empty. Wait {rem//60}m {rem%60}s.")
-            return await interaction.followup.send(view=view)
+            now          = int(time.time())
+            cooldown_sec = cfg['hunt_cooldown'] * 60
+            if now < data['last_hunt'] + cooldown_sec:
+                rem  = (data['last_hunt'] + cooldown_sec) - now
+                view = self._view("Forest Restock", f"The forest is empty. Wait {rem//60}m {rem%60}s.")
+                return await interaction.followup.send(view=view)
 
-        gain = random.randint(cfg['hunt_min'], cfg['hunt_max'])
-        async with self.bot.db_pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE economy_users SET wallet = wallet + $1, last_hunt = $2 WHERE guild_id = $3 AND user_id = $4",
-                gain, now, interaction.guild.id, interaction.user.id
-            )
-        view = self._view("Hunt Conclusion", f"Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!")
-        await interaction.followup.send(view=view)
+            gain = random.randint(cfg['hunt_min'], cfg['hunt_max'])
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE economy_users SET wallet = wallet + $1, last_hunt = $2 WHERE guild_id = $3 AND user_id = $4",
+                    gain, now, interaction.guild.id, interaction.user.id
+                )
+            view = self._view("Hunt Conclusion", f"Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!")
+            await interaction.followup.send(view=view)
+        except Exception as e:
+            print(f"[ERROR] Hunt command failed: {e}")
+            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
 
-    @app_commands.command(name="scavenge", description="Exploring for high-quality scrap metal.")
+    @app_commands.command(name="scavenge", description="Explore for high-quality scrap metal.")
     async def scavenge(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        cfg  = await self.get_config(interaction.guild_id)
-        data = await self._get_user_data(interaction.guild_id, interaction.user.id)
+        try:
+            cfg  = await self.get_config(interaction.guild_id)
+            data = await self._get_user_data(interaction.guild_id, interaction.user.id)
 
-        now          = int(time.time())
-        cooldown_sec = cfg['scavenge_cooldown'] * 60
-        if now < data['last_scavenge'] + cooldown_sec:
-            rem  = (data['last_scavenge'] + cooldown_sec) - now
-            view = self._view("Yard Empty", f"Wait {rem//60}m {rem%60}s for new salvage.")
-            return await interaction.followup.send(view=view)
+            now          = int(time.time())
+            cooldown_sec = cfg['scavenge_cooldown'] * 60
+            if now < data['last_scavenge'] + cooldown_sec:
+                rem  = (data['last_scavenge'] + cooldown_sec) - now
+                view = self._view("Yard Empty", f"Wait {rem//60}m {rem%60}s for new salvage.")
+                return await interaction.followup.send(view=view)
 
-        gain = random.randint(cfg['scavenge_min'], cfg['scavenge_max'])
-        async with self.bot.db_pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE economy_users SET wallet = wallet + $1, last_scavenge = $2 WHERE guild_id = $3 AND user_id = $4",
-                gain, now, interaction.guild.id, interaction.user.id
-            )
-        view = self._view("Scavenge Results", f"Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!")
-        await interaction.followup.send(view=view)
+            gain = random.randint(cfg['scavenge_min'], cfg['scavenge_max'])
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE economy_users SET wallet = wallet + $1, last_scavenge = $2 WHERE guild_id = $3 AND user_id = $4",
+                    gain, now, interaction.guild.id, interaction.user.id
+                )
+            view = self._view("Scavenge Results", f"Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!")
+            await interaction.followup.send(view=view)
+        except Exception as e:
+            print(f"[ERROR] Scavenge command failed: {e}")
+            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="slut", description="Illegal Job: High-risk street hustle for fast cash.")
     async def slut(self, interaction: discord.Interaction):

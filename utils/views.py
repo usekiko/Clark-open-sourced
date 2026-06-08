@@ -12,24 +12,15 @@ from discord import ui
 def styled_view(title: str, description: str, *, timeout: float | None = None) -> ui.LayoutView:
     """
     Build a standard LayoutView with a Container(TextDisplay, Separator, TextDisplay).
-    
-    This replaces the identical _create_styled_view / _create_container_view /
-    _create_response_container helpers that existed in every cog.
-    
-    Args:
-        title:       Bold header text.
-        description: Body text (supports markdown).
-        timeout:     View timeout. Defaults to None (no timeout).
-    
-    Returns:
-        A ready-to-send ui.LayoutView.
-    """
-    header = ui.TextDisplay(f"**{title}**")
-    sep    = ui.Separator(spacing=discord.SeparatorSpacing.small)
-    body   = ui.TextDisplay(description)
 
+    Replaces the identical _create_styled_view / _create_container_view /
+    _create_response_container helpers that existed in every cog.
+    """
+    header    = ui.TextDisplay(f"**{title}**")
+    sep       = ui.Separator(spacing=discord.SeparatorSpacing.small)
+    body      = ui.TextDisplay(description)
     container = ui.Container(header, sep, body)
-    view = ui.LayoutView(timeout=timeout)
+    view      = ui.LayoutView(timeout=timeout)
     view.add_item(container)
     return view
 
@@ -47,12 +38,22 @@ def section_view(
     text      = ui.TextDisplay(header_text)
     accessory = ui.Thumbnail(media=thumbnail_url) if thumbnail_url else None
     section   = ui.Section(text, accessory=accessory)
-
     container = ui.Container(section)
     view      = ui.LayoutView(timeout=timeout)
     view.add_item(container)
     return view
 
 
-# Backward-compatibility alias used by economy-underwork.py and leveling.py
-StandardView = styled_view
+class StandardView(ui.LayoutView):
+    """
+    Backward-compatible LayoutView subclass used by economy-underwork.py and leveling.py.
+
+    Usage (as originally written in those cogs):
+        container = ui.Container(header, sep, body)
+        return StandardView(container)
+    """
+
+    def __init__(self, *items: ui.Item, timeout: float | None = None):
+        super().__init__(timeout=timeout)
+        for item in items:
+            self.add_item(item)
