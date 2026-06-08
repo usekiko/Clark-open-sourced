@@ -1,20 +1,17 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import json
 import random
 import os
+import json
 import topgg
 from dotenv import load_dotenv
+
+from utils import styled_view
 
 load_dotenv()
 
 JSON_DIR = "json"
-
-class FunView(ui.LayoutView):
-    def __init__(self, container: ui.Container):
-        super().__init__(timeout=None)
-        self.add_item(container)
 
 class Funny(commands.Cog):
     def __init__(self, bot):
@@ -59,22 +56,16 @@ class Funny(commands.Cog):
         except Exception as e:
             return None, str(e)
 
-    def _create_container_view(self, title: str, description: str) -> FunView:
-        header = ui.TextDisplay(f"**{title}**")
-        sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        body = ui.TextDisplay(description)
-        container = ui.Container(header, sep, body)
-        return FunView(container)
 
     @app_commands.command(name="joke", description="Tells a random joke")
     @app_commands.checks.cooldown(1, 3.0) 
     async def joke(self, interaction: discord.Interaction):
         content, error = self.get_random_content("jokes.json")
         if error:
-            view = self._create_container_view("Error", error)
+            view = styled_view("Error", error)
             await interaction.response.send_message(view=view, ephemeral=True)
             return
-        view = self._create_container_view("Random Joke", content)
+        view = styled_view("Random Joke", content)
         await interaction.response.send_message(view=view)
 
     @app_commands.command(name="meme", description="Sends a random meme")
@@ -82,10 +73,10 @@ class Funny(commands.Cog):
     async def meme(self, interaction: discord.Interaction):
         content, error = self.get_random_content("memes.json")
         if error:
-            view = self._create_container_view("Error", error)
+            view = styled_view("Error", error)
             await interaction.response.send_message(view=view, ephemeral=True)
             return
-        view = self._create_container_view("Random Meme", content)
+        view = styled_view("Random Meme", content)
         await interaction.response.send_message(view=view)
 
     @app_commands.command(name="tiktok", description="Sends a funny TikTok")
@@ -93,10 +84,10 @@ class Funny(commands.Cog):
     async def tiktok(self, interaction: discord.Interaction):
         content, error = self.get_random_content("tiktoks.json")
         if error:
-            view = self._create_container_view("Error", error)
+            view = styled_view("Error", error)
             await interaction.response.send_message(view=view, ephemeral=True)
             return
-        view = self._create_container_view("Funny TikTok", content)
+        view = styled_view("Funny TikTok", content)
         await interaction.response.send_message(view=view)
 
     @app_commands.command(name="roast", description="Roast someone")
@@ -105,11 +96,11 @@ class Funny(commands.Cog):
     async def roast(self, interaction: discord.Interaction, user: discord.Member = None):
         content, error = self.get_random_content("roasts.json")
         if error:
-            view = self._create_container_view("Error", error)
+            view = styled_view("Error", error)
             await interaction.response.send_message(view=view, ephemeral=True)
             return
         target = user.mention if user else "You"
-        view = self._create_container_view("Roast", f"{target}, {content}")
+        view = styled_view("Roast", f"{target}, {content}")
         await interaction.response.send_message(view=view)
 
     @app_commands.command(name="fact", description="Learn a random fact")
@@ -117,10 +108,10 @@ class Funny(commands.Cog):
     async def fact(self, interaction: discord.Interaction):
         content, error = self.get_random_content("facts.json")
         if error:
-            view = self._create_container_view("Error", error)
+            view = styled_view("Error", error)
             await interaction.response.send_message(view=view, ephemeral=True)
             return
-        view = self._create_container_view("Random Fact", f"Did you know? {content}")
+        view = styled_view("Random Fact", f"Did you know? {content}")
         await interaction.response.send_message(view=view)
 
 async def setup(bot):

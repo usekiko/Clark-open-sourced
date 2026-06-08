@@ -192,3 +192,9 @@ __marimo__/
 # AI Agent files
 AGENTS.md
 CLAUDE.md
+
+# discord.py library source (reference only, not project code)
+feed/
+
+# Utility scratch files
+utils/task.md

@@ -1,64 +1,62 @@
 """
-Shared UI view helpers so they don't need to be copy-pasted in every cog.
+utils/views.py
+--------------
+Shared UI helpers for Clark. All cogs import from here instead of
+copy-pasting the same 6-line Container builder.
 """
-
 from __future__ import annotations
-from typing import Optional
 import discord
 from discord import ui
 
-__all__ = ('StandardView', 'make_view')
 
-
-class StandardView(ui.LayoutView):
-    """A basic LayoutView that wraps a single Container.
-    
-    Usage::
-    
-        view = make_view("Title", "Some description text")
-        await interaction.followup.send(view=view)
+def styled_view(title: str, description: str, *, timeout: float | None = None) -> ui.LayoutView:
     """
-    def __init__(self, container: ui.Container, *, timeout: Optional[float] = None):
-        super().__init__(timeout=timeout)
-        self.add_item(container)
-
-
-def make_view(title: str, description: str, *, accent_colour: Optional[discord.Colour] = None) -> StandardView:
-    """Build a standard **Title** / separator / description LayoutView."""
-    header    = ui.TextDisplay(f"**{title}**")
-    sep       = ui.Separator(spacing=discord.SeparatorSpacing.small)
-    body      = ui.TextDisplay(description)
-    container = ui.Container(header, sep, body, accent_colour=accent_colour)
-    return StandardView(container)
-
-
-def make_section_view(
-    title: str,
-    description: str,
-    thumbnail_url: Optional[str] = None,
-    *,
-    accent_colour: Optional[discord.Colour] = None,
-) -> StandardView:
-    """Build a LayoutView with a Section + optional Thumbnail accessory (like embed_like.py).
-
-    If *thumbnail_url* is provided the section will render the image as a thumbnail
-    accessory on the right side, matching the discord.py embed_like example layout::
-
-        +---Container---+
-        | +--Section--+ |
-        | | TextDisplay|  Thumbnail|
-        | +-----------+ |
-        +---------------+
+    Build a standard LayoutView with a Container(TextDisplay, Separator, TextDisplay).
+    
+    This replaces the identical _create_styled_view / _create_container_view /
+    _create_response_container helpers that existed in every cog.
+    
+    Args:
+        title:       Bold header text.
+        description: Body text (supports markdown).
+        timeout:     View timeout. Defaults to None (no timeout).
+    
+    Returns:
+        A ready-to-send ui.LayoutView.
     """
     header = ui.TextDisplay(f"**{title}**")
+    sep    = ui.Separator(spacing=discord.SeparatorSpacing.small)
     body   = ui.TextDisplay(description)
 
-    if thumbnail_url:
-        thumbnail = ui.Thumbnail(media=thumbnail_url)
-        section   = ui.Section(header, body, accessory=thumbnail)
-        container = ui.Container(section, accent_colour=accent_colour)
-    else:
-        sep       = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        container = ui.Container(header, sep, body, accent_colour=accent_colour)
+    container = ui.Container(header, sep, body)
+    view = ui.LayoutView(timeout=timeout)
+    view.add_item(container)
+    return view
 
-    return StandardView(container)
+
+def section_view(
+    header_text: str,
+    thumbnail_url: str | None = None,
+    *,
+    timeout: float | None = None,
+) -> ui.LayoutView:
+    """
+    Build a LayoutView with a Section (optional Thumbnail accessory).
+    Used for profile / rank cards that display an avatar alongside text.
+    
+    Args:
+        header_text:   Markdown text for the TextDisplay inside the Section.
+        thumbnail_url: Avatar/image URL for the Thumbnail accessory, or None.
+        timeout:       View timeout. Defaults to None.
+    
+    Returns:
+        A ready-to-send ui.LayoutView.
+    """
+    text = ui.TextDisplay(header_text)
+    accessory = ui.Thumbnail(media=thumbnail_url) if thumbnail_url else None
+    section = ui.Section(text, accessory=accessory)
+
+    container = ui.Container(section)
+    view = ui.LayoutView(timeout=timeout)
+    view.add_item(container)
+    return view

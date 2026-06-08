@@ -1,19 +1,8 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import json
-import traceback
 
-class Colors:
-    RESET = '\033[0m'
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
+from utils import styled_view, Colors
 
 class ResponseView(ui.LayoutView):
     def __init__(self, container: ui.Container):
@@ -48,7 +37,8 @@ class SelfRoleSelect(ui.Select):
         if not data:
             return await interaction.followup.send("This self-role menu is no longer active.", ephemeral=True)
 
-        valid_role_ids = json.loads(data['role_ids'])
+        # asyncpg returns JSONB columns as Python objects directly — no json.loads needed
+        valid_role_ids = data['role_ids']
         
         # self.values contains what the user JUST clicked
         selected_values = []
@@ -86,19 +76,13 @@ class SelfRoleSelect(ui.Select):
                     except discord.Forbidden:
                         errors.append(role.name)
 
-        cog = interaction.client.get_cog("SelfRoles")
-        if cog:
-            desc = ""
-            if added: desc += f"**Added:** {', '.join(added)}\n"
-            if removed: desc += f"**Removed:** {', '.join(removed)}\n"
-            if errors: desc += f"**Failed (Permissions):** {', '.join(errors)}"
-            if not desc: desc = "No changes made."
-            
-            status = "ERROR" if errors else "SUCCESS"
-            view = cog._create_response_container("Roles Updated", desc, status)
-            await interaction.followup.send(view=view, ephemeral=True)
-        else:
-            await interaction.followup.send("Roles updated successfully.", ephemeral=True)
+        desc = ""
+        if added:   desc += f"**Added:** {', '.join(added)}\n"
+        if removed: desc += f"**Removed:** {', '.join(removed)}\n"
+        if errors:  desc += f"**Failed (Permissions):** {', '.join(errors)}"
+        if not desc: desc = "No changes made."
+
+        await interaction.followup.send(view=styled_view("Roles Updated", desc), ephemeral=True)
 
 # This View is used only during persistence loading to register the custom_id
 class PersistentSelfRoleView(ui.View):
@@ -145,35 +129,27 @@ class SelfRoles(commands.Cog):
         }
         self.response_thumbnail_accessory = None
 
-    async def setup_database(self):
-        if self.bot.user:
-            self.response_thumbnail_accessory = ui.Thumbnail(media=self.bot.user.display_avatar.url)
-
+    async def cog_load(self) -> None:
+        if not getattr(self.bot, 'db_pool', None):
+            print(f"{Colors.RED}[ERROR] SelfRoles: db_pool not ready.{Colors.RESET}")
+            return
         try:
-            if not hasattr(self.bot, 'db_pool') or self.bot.db_pool is None:
-                print(f"{Colors.RED}[ERROR] Database pool not set.{Colors.RESET}")
-                return
-
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("""
                     CREATE TABLE IF NOT EXISTS self_roles (
                         message_id BIGINT PRIMARY KEY,
-                        guild_id BIGINT NOT NULL,
+                        guild_id   BIGINT NOT NULL,
                         channel_id BIGINT NOT NULL,
-                        role_ids JSONB NOT NULL
+                        role_ids   JSONB  NOT NULL
                     )
                 """)
             print(f"{Colors.GREEN}[SUCCESS] cogs.selfroles.py initialized tables.{Colors.RESET}")
+            # Register the persistent view immediately (bot.user is available by cog_load time)
+            self.bot.add_view(PersistentSelfRoleView())
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Failed to init self_roles table: {e}{Colors.RESET}")
 
-    def _create_response_container(self, title: str, description: str, status: str = 'INFO') -> ResponseView:
-        header = ui.TextDisplay(f"**{title}**")
-        sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        body = ui.TextDisplay(description)
-        
-        container = ui.Container(header, sep, body)
-        return ResponseView(container)
+    # _create_response_container removed — use styled_view() from utils instead
 
     @app_commands.command(name="selfrole", description="Creates a persistent self-role menu.")
     @app_commands.describe(title="Menu Title", description="Menu Description")
@@ -219,17 +195,15 @@ class SelfRoles(commands.Cog):
         
         try:
             async with self.bot.db_pool.acquire() as conn:
+                # Pass the Python list directly — asyncpg serialises it to JSONB automatically
                 await conn.execute(
                     "INSERT INTO self_roles (message_id, guild_id, channel_id, role_ids) VALUES ($1, $2, $3, $4)",
-                    message.id, interaction.guild.id, interaction.channel.id, json.dumps(role_ids)
+                    message.id, interaction.guild.id, interaction.channel.id, role_ids
                 )
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Failed to save selfrole to DB: {e}{Colors.RESET}")
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        await self.setup_database()
-        self.bot.add_view(PersistentSelfRoleView())
+    # on_ready removed — all setup is in cog_load (runs once, not per shard reconnect)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(SelfRoles(bot))

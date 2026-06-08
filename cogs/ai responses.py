@@ -6,6 +6,8 @@ from groq import AsyncGroq
 from typing import Optional, List, Dict
 import asyncio
 
+from utils import Colors
+
 class AIChatbot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -17,11 +19,12 @@ class AIChatbot(commands.Cog):
             "strict": "You are Clark (2025, usekiko). Your tone is serious, professional, and strictly direct. No casual talk. No emojis. Provide efficient, one-sentence information only, command list: when a user asks for a command, tell them to use the /help command."
         }
 
-        self.bot.loop.create_task(self.setup_database())
+        self.bot.loop.create_task(self.setup_database())  # kept for DB tables
         
     async def setup_database(self):
+        """Create tables. Called via cog_load-compatible task."""
         await self.bot.wait_until_ready()
-        if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool: return
+        if not getattr(self.bot, 'db_pool', None): return
         try:
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute("""
