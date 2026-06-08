@@ -10,6 +10,18 @@ from collections import defaultdict
 from utils import styled_view, Colors
 
 
+def _member_name(guild: discord.Guild, user_id: int) -> str:
+    """Return display name for a member, falling back to 'User {id}' if not cached."""
+    m = guild.get_member(user_id)
+    return m.display_name if m else f"User {user_id}"
+
+
+def _channel_name(guild: discord.Guild, channel_id: int) -> str:
+    """Return channel name, falling back to 'Deleted' if not cached."""
+    ch = guild.get_channel(channel_id)
+    return ch.name if ch else "Deleted"
+
+
 _FLUSH_INTERVAL = 30   # seconds between DB flushes
 _CACHE_TTL      = 300  # seconds — 5 min TTL (not currently used but available for future config)
 
@@ -322,11 +334,11 @@ class Analytics(commands.Cog):
             )
 
         ch_lines = "\n".join(
-            f"#{(interaction.guild.get_channel(r['channel_id']) or type('x', (), {'name': 'Deleted'})()).name}: {r['total']:,}"
+            f"#{_channel_name(interaction.guild, r['channel_id'])}: {r['total']:,}"
             for r in top_channels
         )
         u_lines = "\n".join(
-            f"{(interaction.guild.get_member(r['user_id']) or type('x', (), {'display_name': f'User {r[\"user_id\"]}'})()).display_name}: {r['total']:,}"
+            f"{_member_name(interaction.guild, r['user_id'])}: {r['total']:,}"
             for r in top_users
         )
         d_lines = "\n".join(f"{r['date']}: {r['total']:,}" for r in daily)
@@ -350,11 +362,11 @@ class Analytics(commands.Cog):
             )
 
         ch_lines = "\n".join(
-            f"{(interaction.guild.get_channel(r['channel_id']) or type('x', (), {'name': 'Deleted'})()).name}: {r['minutes']:,.0f} min ({r['users']} users)"
+            f"{_channel_name(interaction.guild, r['channel_id'])}: {r['minutes']:,.0f} min ({r['users']} users)"
             for r in top_channels
         )
         u_lines = "\n".join(
-            f"{(interaction.guild.get_member(r['user_id']) or type('x', (), {'display_name': f'User {r[\"user_id\"]}'})()).display_name}: {r['minutes']:,.0f} min ({r['sessions']} sessions)"
+            f"{_member_name(interaction.guild, r['user_id'])}: {r['minutes']:,.0f} min ({r['sessions']} sessions)"
             for r in top_users
         )
         desc = (
@@ -419,7 +431,7 @@ class Analytics(commands.Cog):
 
         cmd_lines  = "\n".join(f"/{r['command_name']}: {r['uses']:,}" for r in top_cmds)
         user_lines = "\n".join(
-            f"{(interaction.guild.get_member(r['user_id']) or type('x', (), {'display_name': f'User {r[\"user_id\"]}'})()).display_name}: {r['uses']:,}"
+            f"{_member_name(interaction.guild, r['user_id'])}: {r['uses']:,}"
             for r in top_users
         )
         desc = f"Total Commands Used: {total:,}\n\nMost Used Commands\n{cmd_lines}\n\nPower Users\n{user_lines}"

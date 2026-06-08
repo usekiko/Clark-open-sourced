@@ -13,12 +13,21 @@ class ThreadGroup(commands.GroupCog, name="thread"):
         self.active_channels = set()
 
     async def cog_load(self):
-        """Load active channels from DB on startup."""
-        if hasattr(self.bot, 'db_pool') and self.bot.db_pool:
-            async with self.bot.db_pool.acquire() as conn:
-                rows = await conn.fetch("SELECT channel_id FROM thread_channels")
-                self.active_channels = {row[0] for row in rows}
-            logger.info(f"Loaded {len(self.active_channels)} thread channels from database.")
+        """Create table then load active channels from DB on startup."""
+        if not (hasattr(self.bot, 'db_pool') and self.bot.db_pool):
+            return
+        async with self.bot.db_pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS thread_channels (
+                    id         SERIAL PRIMARY KEY,
+                    guild_id   BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL UNIQUE
+                )
+            """)
+            rows = await conn.fetch("SELECT channel_id FROM thread_channels")
+            self.active_channels = {row[0] for row in rows}
+        logger.info(f"Loaded {len(self.active_channels)} thread channels from database.")
+
 
     @app_commands.command(name="create", description="Enable auto-threads for images in a channel")
     @app_commands.describe(channel="The channel to enable threads for")

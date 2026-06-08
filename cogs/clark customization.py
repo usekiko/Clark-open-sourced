@@ -50,7 +50,7 @@ class Settings(commands.Cog):
     async def _clear_user_history(self, guild_id: str, user_id: int):
         try:
             async with self.bot.db_pool.acquire() as conn:
-                await conn.execute("DELETE FROM chat_messages WHERE guild_id = $1 AND user_id = $2", guild_id, str(user_id))
+                await conn.execute("DELETE FROM chat_messages WHERE guild_id = $1 AND user_id = $2", guild_id, user_id)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Error clearing history: {e}{Colors.RESET}")
 

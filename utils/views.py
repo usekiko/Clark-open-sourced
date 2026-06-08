@@ -43,20 +43,16 @@ def section_view(
     """
     Build a LayoutView with a Section (optional Thumbnail accessory).
     Used for profile / rank cards that display an avatar alongside text.
-    
-    Args:
-        header_text:   Markdown text for the TextDisplay inside the Section.
-        thumbnail_url: Avatar/image URL for the Thumbnail accessory, or None.
-        timeout:       View timeout. Defaults to None.
-    
-    Returns:
-        A ready-to-send ui.LayoutView.
     """
-    text = ui.TextDisplay(header_text)
+    text      = ui.TextDisplay(header_text)
     accessory = ui.Thumbnail(media=thumbnail_url) if thumbnail_url else None
-    section = ui.Section(text, accessory=accessory)
+    section   = ui.Section(text, accessory=accessory)
 
     container = ui.Container(section)
-    view = ui.LayoutView(timeout=timeout)
+    view      = ui.LayoutView(timeout=timeout)
     view.add_item(container)
     return view
+
+
+# Backward-compatibility alias used by economy-underwork.py and leveling.py
+StandardView = styled_view

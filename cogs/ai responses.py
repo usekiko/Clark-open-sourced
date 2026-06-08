@@ -56,6 +56,15 @@ class AIChatbot(commands.Cog):
                 await conn.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON chat_messages (user_id)")
                 await conn.execute("CREATE INDEX IF NOT EXISTS idx_guild_id ON chat_messages (guild_id)")
                 await conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON chat_messages (timestamp)")
+
+                # Channels where the bot is allowed to respond (empty = all channels)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS allowed_channels (
+                        guild_id   VARCHAR(20) NOT NULL,
+                        channel_id BIGINT      NOT NULL,
+                        PRIMARY KEY (guild_id, channel_id)
+                    )
+                """)
             print("AI Chatbot Database initialized successfully")
         except Exception as e:
             print(f"Database setup error: {e}")
