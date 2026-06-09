@@ -99,6 +99,21 @@ class Verification(commands.Cog):
                         panel_title       VARCHAR(100)
                     )
                 """)
+                # Migrate guild_id from VARCHAR to BIGINT if the table was created by old code
+                await conn.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'verification_config'
+                              AND column_name = 'guild_id'
+                              AND data_type = 'character varying'
+                        ) THEN
+                            ALTER TABLE verification_config
+                                ALTER COLUMN guild_id TYPE BIGINT USING guild_id::BIGINT;
+                        END IF;
+                    END $$;
+                """)
         except Exception as e:
             print(f"{Colors.RED}[ERROR]        Verification table creation failed: {e}{Colors.RESET}")
             return

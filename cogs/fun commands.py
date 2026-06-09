@@ -2,29 +2,15 @@ import discord
 from discord.ext import commands
 from discord import app_commands, ui
 import random
-import os
 import json
-import topgg
-from dotenv import load_dotenv
 
 from utils import styled_view
-
-load_dotenv()
 
 JSON_DIR = "json"
 
 class Funny(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.topgg_token = os.getenv("TOPGG_TOKEN")
-        
-        if self.topgg_token:
-            self.dbl_client = topgg.DBLClient(bot, self.topgg_token, autopost=True)
-            print("Top.gg Client Connected")
-        else:
-            self.dbl_client = None
-            print("Top.gg Token missing in .env")
-
         self.ensure_files_exist()
 
     def ensure_files_exist(self):
