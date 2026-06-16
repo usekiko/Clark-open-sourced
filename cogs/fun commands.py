@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands, ui
 import random
+import os
 import json
 
 from utils import styled_view
