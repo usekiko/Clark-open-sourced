@@ -106,9 +106,9 @@ class AIChatbot(commands.Cog):
             
             chat_completion = await self.groq_client.chat.completions.create(
                 messages=messages,
-                model="openai/gpt-oss-120b",
+                model="llama-3.3-70b-versatile",
                 temperature=0.9,
-                max_tokens=400
+                max_tokens=400,
             )
             return chat_completion.choices[0].message.content
         except Exception as e:
@@ -151,7 +151,7 @@ class AIChatbot(commands.Cog):
                 async with self.bot.db_pool.acquire() as conn:
                     query = "INSERT INTO chat_messages (user_id, username, guild_id, channel_id, message_content, response_content, model, is_dm) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
                     db_guild_id = str(guild_id) if guild_id else None
-                    await conn.execute(query, message.author.id, str(message.author), db_guild_id, message.channel.id, content, ai_response, "openai/gpt-oss-120b", is_dm)
+                    await conn.execute(query, message.author.id, str(message.author), db_guild_id, message.channel.id, content, ai_response, "llama-3.3-70b-versatile", is_dm)
             except Exception as e:
                 print(f"Database save error: {e}")
 
@@ -161,9 +161,9 @@ class AIChatbot(commands.Cog):
         if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool: return []
         async with self.bot.db_pool.acquire() as conn:
             if guild_id:
-                res = await conn.fetch("SELECT message_content, response_content FROM chat_messages WHERE user_id = $1 AND guild_id = $2 ORDER BY timestamp DESC LIMIT 20", user_id, str(guild_id))
+                res = await conn.fetch("SELECT message_content, response_content FROM chat_messages WHERE user_id = $1 AND guild_id = $2 ORDER BY timestamp DESC LIMIT 10", user_id, str(guild_id))
             else:
-                res = await conn.fetch("SELECT message_content, response_content FROM chat_messages WHERE user_id = $1 AND is_dm = TRUE ORDER BY timestamp DESC LIMIT 20", user_id)
+                res = await conn.fetch("SELECT message_content, response_content FROM chat_messages WHERE user_id = $1 AND is_dm = TRUE ORDER BY timestamp DESC LIMIT 10", user_id)
             return list(reversed([dict(r) for r in res]))
 
 async def setup(bot):
