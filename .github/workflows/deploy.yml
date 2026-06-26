@@ -1,5 +1,6 @@
 name: Deploy Clark Bot
 
+# Deploys by rebuilding the rootless podman image and restarting the quadlet service.
 on:
   push:
     branches: [ main ]
