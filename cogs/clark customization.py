@@ -47,6 +47,13 @@ class Settings(commands.Cog):
             return False
         return True
 
+    def _invalidate_ai_cache(self, guild_id: int):
+        """The AI cog caches persona settings for a minute; drop it so a staff
+        change applies to the very next message instead of a minute later."""
+        cog = self.bot.get_cog("AIChatbot")
+        if cog is not None and hasattr(cog, "invalidate_config"):
+            cog.invalidate_config(guild_id)
+
     async def _clear_server_history(self, guild_id: str):
         """Clark's context is shared per channel, so a persona change resets the
         whole server's conversation, not just the staff member who ran the command.
@@ -79,6 +86,7 @@ class Settings(commands.Cog):
                 )
             
             await self._clear_server_history(str(interaction.guild.id))
+            self._invalidate_ai_cache(interaction.guild.id)
             view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
@@ -103,6 +111,7 @@ class Settings(commands.Cog):
                 )
             
             await self._clear_server_history(str(interaction.guild.id))
+            self._invalidate_ai_cache(interaction.guild.id)
             
             view = self._create_styled_view('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
@@ -121,6 +130,7 @@ class Settings(commands.Cog):
                 )
             
             await self._clear_server_history(str(interaction.guild.id))
+            self._invalidate_ai_cache(interaction.guild.id)
             view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
