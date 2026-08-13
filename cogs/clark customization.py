@@ -146,7 +146,7 @@ class Settings(commands.Cog):
             print(f"{Colors.RED}[ERROR] Reset error: {e}{Colors.RESET}")
 
     @clark_group.command(name="clear_context", description="Wipes Clark's memory of every conversation on this server.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def clear_context(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         await interaction.response.defer(ephemeral=True)
