@@ -1,4 +1,5 @@
 import discord
+import traceback
 from discord.ext import commands
 from discord import app_commands, ui
 
@@ -38,6 +39,35 @@ class Settings(commands.Cog):
         view.add_item(container)
         return view
     
+    async def cog_app_command_error(self, interaction: discord.Interaction,
+                                    error: app_commands.AppCommandError):
+        """Without this, a failed permission check or an exception raised before the
+        callback body leaves the interaction unacknowledged, and Discord shows the
+        user "application did not respond" with nothing in the logs to explain it."""
+        if isinstance(error, app_commands.MissingPermissions):
+            title = "Missing Permissions"
+            body = "You need the **Manage Server** permission to change Clark's settings."
+        elif isinstance(error, app_commands.BotMissingPermissions):
+            title = "I'm Missing Permissions"
+            body = f"I need: {', '.join(error.missing_permissions)}"
+        elif isinstance(error, app_commands.CheckFailure):
+            title, body = "Not Allowed", "You can't use that command here."
+        else:
+            title = "Something Broke"
+            body = "That command failed. The error has been logged."
+            name = interaction.command.qualified_name if interaction.command else "unknown"
+            print(f"{Colors.RED}[ERROR] /{name} failed: {type(error).__name__}: {error}{Colors.RESET}")
+            traceback.print_exception(type(error), error, error.__traceback__)
+
+        try:
+            view = self._create_styled_view('ERROR', title, body, interaction)
+            if interaction.response.is_done():
+                await interaction.followup.send(view=view, ephemeral=True)
+            else:
+                await interaction.response.send_message(view=view, ephemeral=True)
+        except discord.HTTPException:
+            pass
+
     clark_group = app_commands.Group(name="clark", description="Clark's bot-specific settings.")
     
     async def _check_db_ready(self, interaction: discord.Interaction) -> bool:
