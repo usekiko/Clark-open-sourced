@@ -51,8 +51,13 @@ class Settings(commands.Cog):
         """The AI cog caches persona settings for a minute; drop it so a staff
         change applies to the very next message instead of a minute later."""
         cog = self.bot.get_cog("AIChatbot")
-        if cog is not None and hasattr(cog, "invalidate_config"):
+        if cog is None:
+            return
+        if hasattr(cog, "invalidate_config"):
             cog.invalidate_config(guild_id)
+        # Context also lives in RAM now, so archiving the rows is not enough.
+        if hasattr(cog, "invalidate_conversations"):
+            cog.invalidate_conversations(guild_id)
 
     async def _clear_server_history(self, guild_id: str):
         """Clark's context is shared per channel, so a persona change resets the
