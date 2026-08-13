@@ -47,10 +47,16 @@ class Settings(commands.Cog):
             return False
         return True
 
-    async def _clear_user_history(self, guild_id: str, user_id: int):
+    async def _clear_server_history(self, guild_id: str):
+        """Clark's context is shared per channel, so a persona change resets the
+        whole server's conversation, not just the staff member who ran the command.
+        Rows are archived rather than deleted so analytics keep their data."""
         try:
             async with self.bot.db_pool.acquire() as conn:
-                await conn.execute("DELETE FROM chat_messages WHERE guild_id = $1 AND user_id = $2", guild_id, user_id)
+                await conn.execute(
+                    "UPDATE chat_messages SET archived = TRUE WHERE guild_id = $1 AND archived = FALSE",
+                    guild_id,
+                )
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Error clearing history: {e}{Colors.RESET}")
 
@@ -72,7 +78,7 @@ class Settings(commands.Cog):
                     str(interaction.guild.id), interaction.guild.name, mode
                 )
             
-            await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
+            await self._clear_server_history(str(interaction.guild.id))
             view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
@@ -96,7 +102,7 @@ class Settings(commands.Cog):
                     str(interaction.guild.id), interaction.guild.name, instruction
                 )
             
-            await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
+            await self._clear_server_history(str(interaction.guild.id))
             
             view = self._create_styled_view('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
@@ -114,7 +120,7 @@ class Settings(commands.Cog):
                     str(interaction.guild.id)
                 )
             
-            await self._clear_user_history(str(interaction.guild.id), interaction.user.id)
+            await self._clear_server_history(str(interaction.guild.id))
             view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
