@@ -59,18 +59,22 @@ class Settings(commands.Cog):
         if hasattr(cog, "invalidate_conversations"):
             cog.invalidate_conversations(guild_id)
 
-    async def _clear_server_history(self, guild_id: str):
+    async def _clear_server_history(self, guild_id: str) -> int:
         """Clark's context is shared per channel, so a persona change resets the
         whole server's conversation, not just the staff member who ran the command.
-        Rows are archived rather than deleted so analytics keep their data."""
+        Rows are archived rather than deleted so analytics keep their data.
+        Returns how many exchanges were retired."""
         try:
             async with self.bot.db_pool.acquire() as conn:
-                await conn.execute(
+                status = await conn.execute(
                     "UPDATE chat_messages SET archived = TRUE WHERE guild_id = $1 AND archived = FALSE",
                     guild_id,
                 )
+            # asyncpg hands back a tag like "UPDATE 12".
+            return int(status.split()[-1]) if status else 0
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Error clearing history: {e}{Colors.RESET}")
+            return 0
 
     @clark_group.command(name="mode", description="Changes Clark's personality mode.")
     @app_commands.describe(mode="Choose between friendly, strict, or rude.")
@@ -140,6 +144,27 @@ class Settings(commands.Cog):
             await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Reset error: {e}{Colors.RESET}")
+
+    @clark_group.command(name="clear_context", description="Wipes Clark's memory of every conversation on this server.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def clear_context(self, interaction: discord.Interaction):
+        if not await self._check_db_ready(interaction): return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            cleared = await self._clear_server_history(str(interaction.guild.id))
+            # Context also lives in RAM, so archiving rows alone would leave
+            # Clark still remembering everything until the cache turned over.
+            self._invalidate_ai_cache(interaction.guild.id)
+
+            body = (
+                f"Forgot {cleared} exchange{'' if cleared == 1 else 's'} across every channel.\n"
+                "Clark now starts fresh with everyone here."
+            ) if cleared else "There was nothing left to forget."
+            view = self._create_styled_view('SUCCESS', "Context Cleared", body, interaction)
+            await interaction.followup.send(view=view, ephemeral=True)
+        except Exception as e:
+            print(f"{Colors.RED}[ERROR] Clear context error: {e}{Colors.RESET}")
+            await interaction.followup.send("Database error occurred.", ephemeral=True)
 
     @clark_group.command(name="on", description="Turns the mention chatbot feature on.")
     @app_commands.checks.has_permissions(manage_guild=True)
