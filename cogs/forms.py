@@ -53,12 +53,12 @@ class FormBuilderModal(ui.Modal, title="Form Builder"):
                 await conn.execute("""
                     UPDATE forms SET name = $1, description = $2, questions = $3, role_id = $4
                     WHERE form_id = $5 AND guild_id = $6
-                """, str(self.form_name), str(self.description), json.dumps(questions), role_id, self.form_id, interaction.guild.id)
+                """, str(self.form_name), str(self.description), questions, role_id, self.form_id, interaction.guild.id)
             else:
                 await conn.execute("""
                     INSERT INTO forms (guild_id, name, description, questions, role_id, created_by)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                """, interaction.guild.id, str(self.form_name), str(self.description), json.dumps(questions), role_id, interaction.user.id)
+                """, interaction.guild.id, str(self.form_name), str(self.description), questions, role_id, interaction.user.id)
         
         action = "updated" if self.form_id else "created"
         await interaction.response.send_message(f"✅ Form '{self.form_name}' {action} successfully!", ephemeral=True)
@@ -308,7 +308,7 @@ class Forms(commands.Cog):
                 INSERT INTO form_submissions (form_id, guild_id, user_id, answers)
                 VALUES ($1, $2, $3, $4)
                 RETURNING submission_id
-            """, form_id, interaction.guild.id, interaction.user.id, json.dumps(answers))
+            """, form_id, interaction.guild.id, interaction.user.id, answers)
             
             # Get form info
             form_info = await conn.fetchrow(
@@ -532,30 +532,63 @@ class Forms(commands.Cog):
     async def on_ready(self):
         await self.setup_database()
 
+    async def cog_load(self):
+        # Teaches the client how to rebuild a submit button from its custom_id,
+        # so panels posted before the last restart still work.
+        self.bot.add_dynamic_items(FormSubmitButton)
+
+class FormSubmitButton(ui.DynamicItem[ui.Button], template=r"clark:form_submit:(?P<form_id>\d+)"):
+    """Submit button for a posted form panel.
+
+    A plain View can't survive a restart here because each panel needs to know
+    *which* form it belongs to, and that lived only in Python state — so every
+    posted panel went dead on restart. DynamicItem puts the form id inside the
+    custom_id instead, and discord.py rebuilds the item from the id when the
+    button is clicked, however long after the panel was posted.
+    """
+
+    def __init__(self, form_id: int):
+        self.form_id = form_id
+        super().__init__(
+            ui.Button(
+                label="Submit Application",
+                style=discord.ButtonStyle.primary,
+                emoji="📝",
+                custom_id=f"clark:form_submit:{form_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(int(match["form_id"]))
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("Forms")
+        if cog is None:
+            return await interaction.response.send_message("Forms are unavailable right now.", ephemeral=True)
+
+        async with cog.bot.db_pool.acquire() as conn:
+            form = await conn.fetchrow(
+                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2 AND is_active = TRUE",
+                self.form_id, interaction.guild.id
+            )
+
+        if not form:
+            return await interaction.response.send_message("This form is no longer available.", ephemeral=True)
+
+        questions = form['questions']
+        if isinstance(questions, str):      # rows written before the JSONB codec
+            questions = json.loads(questions)
+
+        await interaction.response.send_modal(FormSubmissionModal(cog, self.form_id, questions))
+
+
 class FormSubmitView(ui.View):
     def __init__(self, cog, form_id: int):
         super().__init__(timeout=None)
         self.cog = cog
         self.form_id = form_id
-
-    @ui.button(label="Submit Application", style=discord.ButtonStyle.primary, emoji="📝")
-    async def submit(self, interaction: discord.Interaction, button: ui.Button):
-        # Reuse the form-submit command logic
-        async with self.cog.bot.db_pool.acquire() as conn:
-            form = await conn.fetchrow(
-                "SELECT * FROM forms WHERE form_id = $1 AND guild_id = $2 AND is_active = TRUE",
-                self.form_id, interaction.guild.id
-            )
-        
-        if not form:
-            return await interaction.response.send_message("This form is no longer available.", ephemeral=True)
-        
-        if isinstance(form['questions'], str):
-            questions = json.loads(form['questions'])
-        else:
-            questions = form['questions']
-            
-        await interaction.response.send_modal(FormSubmissionModal(self.cog, self.form_id, questions))
+        self.add_item(FormSubmitButton(form_id))
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Forms(bot))

@@ -5,8 +5,28 @@ import asyncio
 import traceback
 from dotenv import load_dotenv
 import asyncpg
+import json
 import os
 import sys
+
+
+async def _init_connection(conn):
+    """Make JSONB behave the way every cog already assumes it does.
+
+    By default asyncpg hands JSON/JSONB back as a raw string and refuses to
+    encode anything that isn't one. Three cogs were written against the opposite
+    assumption — passing a Python list straight at a JSONB column and reading one
+    back — so /log setup and /selfrole raised on every insert and silently saved
+    nothing. Registering the codec here fixes all of them at once, and keeps the
+    behaviour consistent for anything added later.
+    """
+    for typename in ("json", "jsonb"):
+        await conn.set_type_codec(
+            typename,
+            encoder=json.dumps,
+            decoder=json.loads,
+            schema="pg_catalog",
+        )
 
 # --- Initialization ---
 load_dotenv()
@@ -75,7 +95,8 @@ class MyBot(commands.AutoShardedBot):
                 database=os.getenv('PG_DATABASE'),
                 port=int(os.getenv('PG_PORT', 5432)),
                 min_size=5,
-                max_size=20
+                max_size=20,
+                init=_init_connection,
             )
             print("[SUCCESS] Database connection pool created.")
         except Exception as e:

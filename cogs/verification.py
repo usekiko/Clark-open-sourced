@@ -80,6 +80,22 @@ class Verification(commands.Cog):
     # -----------------------------------------------------------------------
 
     async def cog_load(self) -> None:
+        # Re-arm the verify button on every panel already posted.
+        #
+        # First, before the database guard below: registering needs no DB, no
+        # guild cache and no API calls, so a database problem must not be able to
+        # leave every existing verify button dead.
+        #
+        # VerifyButton's custom_id is the same in every server, so one
+        # registration answers every panel. The labels are never rendered; they
+        # only have to exist for the view to construct.
+        try:
+            self.bot.add_view(
+                self._create_panel("Verification", "…", "Verify", discord.ButtonStyle.success)
+            )
+        except Exception as e:
+            print(f"{Colors.RED}[ERROR]        Verification view registration failed: {e}{Colors.RESET}")
+
         if not getattr(self.bot, "db_pool", None):
             print(f"{Colors.RED}[ERROR]        Verification cog: db_pool not ready.{Colors.RESET}")
             return
@@ -118,26 +134,11 @@ class Verification(commands.Cog):
             print(f"{Colors.RED}[ERROR]        Verification table creation failed: {e}{Colors.RESET}")
             return
 
-        # Restore persistent verification views on every startup
-        try:
-            async with self.bot.db_pool.acquire() as conn:
-                configs = await conn.fetch("SELECT * FROM verification_config")
-            for config in configs:
-                guild = self.bot.get_guild(config["guild_id"])
-                if not guild:
-                    continue
-                channel = guild.get_channel(config["channel_id"])
-                if not channel:
-                    continue
-                try:
-                    message = await channel.fetch_message(config["message_id"])
-                    style   = BUTTON_COLORS.get(config["button_style"], discord.ButtonStyle.success)
-                    view    = self._create_panel(config["panel_title"], config["custom_message"], config["button_label"], style)
-                    await message.edit(view=view)
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"{Colors.RED}[ERROR]        Verification restore failed: {e}{Colors.RESET}")
+        # (The panel restore that used to live here walked verification_config and
+        # edited each message back into place, but cog_load runs inside
+        # setup_hook — before the gateway connects — so bot.get_guild returned
+        # None for every guild and it restored nothing. Replaced by the single
+        # add_view at the top of this method.)
 
     # -----------------------------------------------------------------------
     # Helpers

@@ -139,9 +139,12 @@ class Leveling(commands.Cog):
                                             pass
 
                             # Assign role reward
+                            # Was passing user_id as the level, so this matched a
+                            # row only if a reward existed for level 1454536158…
+                            # In other words role rewards never fired, ever.
                             reward = await conn.fetchrow(
                                 "SELECT role_id FROM level_rewards WHERE guild_id = $1 AND level = $2",
-                                guild_id, user_id
+                                guild_id, actual_level
                             )
                             if reward:
                                 guild = self.bot.get_guild(guild_id)
@@ -379,6 +382,74 @@ class Leveling(commands.Cog):
 
         view = self._view("Configuration Updated", "Settings updated successfully.")
         await interaction.followup.send(view=view, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Level rewards
+    #
+    # The level_rewards table and the role-granting code both already existed,
+    # but nothing in the bot ever wrote a row, so the feature could never fire
+    # even once the lookup bug was fixed. These are the missing half.
+    # ------------------------------------------------------------------
+
+    @level_group.command(name="reward", description="Give a role automatically at a level.")
+    @app_commands.describe(level="The level that earns the role.",
+                           role="Leave empty to remove the reward for this level.")
+    @app_commands.checks.has_permissions(manage_roles=True)
+    async def reward(self, interaction: discord.Interaction,
+                     level: app_commands.Range[int, 1, 1000],
+                     role: discord.Role = None):
+        await interaction.response.defer(ephemeral=True)
+
+        if role is None:
+            async with self.bot.db_pool.acquire() as conn:
+                tag = await conn.execute(
+                    "DELETE FROM level_rewards WHERE guild_id = $1 AND level = $2",
+                    interaction.guild.id, level)
+            removed = tag and tag.split()[-1] != "0"
+            body = (f"Level {level} no longer grants a role."
+                    if removed else f"Level {level} had no reward set.")
+            return await interaction.followup.send(view=self._view("Level Rewards", body), ephemeral=True)
+
+        if role >= interaction.guild.me.top_role:
+            return await interaction.followup.send(
+                view=self._view("Can't Use That Role",
+                                f"{role.mention} sits above my highest role, so I can't hand it out."),
+                ephemeral=True)
+        if role.managed or role.is_default():
+            return await interaction.followup.send(
+                view=self._view("Can't Use That Role", "That role is managed by Discord or is @everyone."),
+                ephemeral=True)
+
+        async with self.bot.db_pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO level_rewards (guild_id, level, role_id) VALUES ($1, $2, $3)
+                ON CONFLICT (guild_id, level) DO UPDATE SET role_id = EXCLUDED.role_id
+                """,
+                interaction.guild.id, level, role.id)
+
+        await interaction.followup.send(
+            view=self._view("Level Reward Set", f"Reaching level {level} now grants {role.mention}."),
+            ephemeral=True)
+
+    @level_group.command(name="rewards", description="List the roles granted at each level.")
+    async def rewards(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        async with self.bot.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT level, role_id FROM level_rewards WHERE guild_id = $1 ORDER BY level",
+                interaction.guild.id)
+
+        if not rows:
+            return await interaction.followup.send(
+                view=self._view("Level Rewards", "No level rewards set. Use `/level reward` to add one."),
+                ephemeral=True)
+
+        lines = []
+        for r in rows:
+            role = interaction.guild.get_role(r["role_id"])
+            lines.append(f"Level {r['level']} — {role.mention if role else '*deleted role*'}")
+        await interaction.followup.send(view=self._view("Level Rewards", "\n".join(lines)), ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

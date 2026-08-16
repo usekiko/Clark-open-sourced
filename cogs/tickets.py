@@ -16,16 +16,29 @@ from utils import styled_view, Colors
 # ---------------------------------------------------------------------------
 
 class TicketPanelView(ui.View):
-    def __init__(self, cog, guild_id: int):
-        super().__init__(timeout=None)
-        self.cog      = cog
-        self.guild_id = guild_id
+    """The panel posted by /ticket-panel.
 
-    @ui.button(label="Create Ticket", style=discord.ButtonStyle.primary, emoji="🎫")
+    custom_id is set explicitly on both buttons and the view never times out, so
+    the same registration keeps working after a restart. Without a fixed id
+    discord.py generates a random one per instance, which means the buttons on an
+    already-posted panel match nothing once the process restarts and clicking
+    them does nothing at all.
+
+    Deliberately carries no per-guild state: one instance is registered at
+    startup and serves every panel in every server.
+    """
+
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @ui.button(label="Create Ticket", style=discord.ButtonStyle.primary, emoji="🎫",
+               custom_id="clark:ticket_panel:create")
     async def create_ticket(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(TicketCategoryModal(self.cog))
 
-    @ui.button(label="View My Tickets", style=discord.ButtonStyle.secondary, emoji="📋")
+    @ui.button(label="View My Tickets", style=discord.ButtonStyle.secondary, emoji="📋",
+               custom_id="clark:ticket_panel:view")
     async def view_tickets(self, interaction: discord.Interaction, button: ui.Button):
         await self.cog.show_user_tickets(interaction)
 
@@ -171,6 +184,11 @@ class Tickets(commands.Cog):
     # -----------------------------------------------------------------------
 
     async def cog_load(self) -> None:
+        # Re-arm every ticket panel ever posted. One registration covers all of
+        # them because the custom_ids are fixed; without it the buttons on panels
+        # posted before the last restart are inert.
+        self.bot.add_view(TicketPanelView(self))
+
         if not getattr(self.bot, "db_pool", None):
             print(f"{Colors.RED}[ERROR]        Tickets cog: db_pool not ready.{Colors.RESET}")
             return
@@ -266,19 +284,19 @@ class Tickets(commands.Cog):
     async def ticket_panel(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        panel = ui.LayoutView()
-        header = ui.TextDisplay("## 🎫 Support Center\nNeed help? Create a ticket and our team will assist you!\n\n**How it works:**\n1. Click Create Ticket below\n2. Select a category\n3. Describe your issue\n4. Wait for a staff member")
-        container = ui.Container(header)
-        panel.add_item(container)
-
-        buttons = ui.ActionRow()
-        buttons.add_item(discord.ui.Button(label="Create Ticket",  style=discord.ButtonStyle.primary,   emoji="🎫", custom_id=f"tp_create:{interaction.guild.id}"))
-        buttons.add_item(discord.ui.Button(label="View My Tickets",style=discord.ButtonStyle.secondary,            custom_id=f"tp_view:{interaction.guild.id}"))
-        panel.add_item(buttons)
-
-        # Use a persistent view that can handle the buttons
-        view = TicketPanelView(self, interaction.guild.id)
-        await interaction.channel.send(view=view)
+        # The panel text used to be built into a LayoutView that was then dropped
+        # on the floor — the posted panel was two unexplained buttons and nothing
+        # else. Sent as the message body so it actually reaches the channel.
+        body = (
+            "## 🎫 Support Center\n"
+            "Need help? Create a ticket and our team will assist you!\n\n"
+            "**How it works:**\n"
+            "1. Click Create Ticket below\n"
+            "2. Select a category\n"
+            "3. Describe your issue\n"
+            "4. Wait for a staff member"
+        )
+        await interaction.channel.send(body, view=TicketPanelView(self))
         await interaction.followup.send(view=styled_view("Panel Created", "Ticket panel posted successfully."), ephemeral=True)
 
     @app_commands.command(name="ticket-config", description="Configure ticket categories and settings.")
