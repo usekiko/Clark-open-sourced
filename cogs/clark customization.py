@@ -190,6 +190,111 @@ class Settings(commands.Cog):
             print(f"{Colors.RED}[ERROR] Clear context error: {e}{Colors.RESET}")
             await interaction.followup.send("Database error occurred.", ephemeral=True)
 
+    async def _clear_channel_history(self, channel_id: int) -> int:
+        """Same as _clear_server_history but for one channel."""
+        try:
+            async with self.bot.db_pool.acquire() as conn:
+                status = await conn.execute(
+                    "UPDATE chat_messages SET archived = TRUE WHERE channel_id = $1 AND archived = FALSE",
+                    channel_id,
+                )
+            return int(status.split()[-1]) if status else 0
+        except Exception as e:
+            print(f"{Colors.RED}[ERROR] Error clearing channel history: {e}{Colors.RESET}")
+            return 0
+
+    def _invalidate_channel(self, guild_id: int, channel_id: int):
+        """Drop the gate cache for the guild and this channel's conversation. The
+        rest of the server keeps its memory."""
+        cog = self.bot.get_cog("AIChatbot")
+        if cog is None:
+            return
+        if hasattr(cog, "invalidate_config"):
+            cog.invalidate_config(guild_id)
+        if hasattr(cog, "invalidate_channel"):
+            cog.invalidate_channel(channel_id)
+
+    @clark_group.command(name="channel_instruction",
+                         description="Set an instruction for one channel, overriding the server one.")
+    @app_commands.describe(channel="The channel this applies to.",
+                           instruction="How Clark should behave here (max 400 chars).")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def set_channel_instruction(self, interaction: discord.Interaction,
+                                      channel: discord.TextChannel, instruction: str):
+        if len(instruction) > 400:
+            e = self._embed('INFO', "Character Limit Exceeded", "Maximum instruction length is 400 characters.")
+            return await interaction.response.send_message(embed=e, ephemeral=True)
+        if not await self._check_db_ready(interaction): return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO channel_instructions (guild_id, channel_id, instruction, set_by) "
+                    "VALUES ($1, $2, $3, $4) ON CONFLICT (guild_id, channel_id) "
+                    "DO UPDATE SET instruction = EXCLUDED.instruction, set_by = EXCLUDED.set_by, "
+                    "updated_at = CURRENT_TIMESTAMP",
+                    interaction.guild.id, channel.id, instruction, interaction.user.id,
+                )
+            await self._clear_channel_history(channel.id)
+            self._invalidate_channel(interaction.guild.id, channel.id)
+            body = (f"{channel.mention} now uses its own instruction instead of the server one.\n"
+                    "Its conversation history was cleared.")
+            # Not enforced, just a heads up - Discord expects adult content in
+            # age-restricted channels.
+            if not channel.is_nsfw():
+                body += "\n\nNote: this channel isn't age-restricted."
+            e = self._embed('SUCCESS', "Channel Instruction Set", body)
+            await interaction.followup.send(embed=e, ephemeral=True)
+        except Exception as e:
+            print(f"{Colors.RED}[ERROR] Channel instruction error: {e}{Colors.RESET}")
+            await interaction.followup.send("Database error occurred.", ephemeral=True)
+
+    @clark_group.command(name="reset_channel_instruction",
+                         description="Drop a channel's instruction so it uses the server one again.")
+    @app_commands.describe(channel="The channel to reset.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def reset_channel_instruction(self, interaction: discord.Interaction,
+                                        channel: discord.TextChannel):
+        if not await self._check_db_ready(interaction): return
+        await interaction.response.defer(ephemeral=True)
+        async with self.bot.db_pool.acquire() as conn:
+            status = await conn.execute(
+                "DELETE FROM channel_instructions WHERE guild_id = $1 AND channel_id = $2",
+                interaction.guild.id, channel.id,
+            )
+        removed = status and status.split()[-1] != "0"
+        if removed:
+            await self._clear_channel_history(channel.id)
+        self._invalidate_channel(interaction.guild.id, channel.id)
+        body = (f"{channel.mention} is back on the server instruction."
+                if removed else f"{channel.mention} didn't have its own instruction.")
+        await interaction.followup.send(embed=self._embed('SUCCESS', "Channel Instruction Reset", body),
+                                        ephemeral=True)
+
+    @clark_group.command(name="list_channel_instructions",
+                         description="Show which channels have their own instruction.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def list_channel_instructions(self, interaction: discord.Interaction):
+        if not await self._check_db_ready(interaction): return
+        await interaction.response.defer(ephemeral=True)
+        async with self.bot.db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT channel_id, instruction FROM channel_instructions WHERE guild_id = $1",
+                interaction.guild.id,
+            )
+        if not rows:
+            e = self._embed('SUCCESS', "Channel Instructions",
+                            "No channel has its own instruction. They all use the server one.")
+            return await interaction.followup.send(embed=e, ephemeral=True)
+
+        lines = []
+        for r in rows:
+            ch = interaction.guild.get_channel(r["channel_id"])
+            preview = r["instruction"][:80] + ("…" if len(r["instruction"]) > 80 else "")
+            lines.append(f"{ch.mention if ch else '*deleted channel*'} — {preview}")
+        await interaction.followup.send(
+            embed=self._embed('SUCCESS', "Channel Instructions", "\n".join(lines)), ephemeral=True)
+
     @clark_group.command(name="on", description="Turns the mention chatbot feature on.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def chatbot_on(self, interaction: discord.Interaction):

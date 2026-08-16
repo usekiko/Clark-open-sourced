@@ -23,7 +23,7 @@ This is the open-sourced code of Clark, released under the AGPL-3.0 license.
 
 ## Features
 
-- **AI Chatbot** — Groq-powered conversational AI with three switchable personalities (friendly, rude, strict) and per-server custom instructions.
+- **AI Chatbot** — Groq-powered conversational AI with three switchable personalities (friendly, rude, strict), plus custom instructions per server or per channel.
 - **Moderation** — Ban, kick, timeout, purge, warnings and more, all backed by persistent case tracking.
 - **AutoMod** — Automated rule enforcement for spam, banned words and unwanted content.
 - **Logging** — Event logging for messages, members, moderation actions and server changes.
