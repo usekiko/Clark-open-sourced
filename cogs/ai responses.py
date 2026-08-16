@@ -6,7 +6,7 @@ import re
 import time
 import random
 import traceback
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from groq import AsyncGroq
 from typing import Optional, List, Dict, Tuple
 import asyncio
@@ -82,6 +82,19 @@ _LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t
 # has to collapse for the reply to come out as a single line.
 _CHANTED_LINE = re.compile(r"^\s*(.{1,80}?)(?:[\s,.;:!?…—–-]*\1){1,}[\s,.;:!?…—–-]*$", re.IGNORECASE)
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
+# The chant guard above only catches a line that is *nothing but* the repeat.
+# Asked to arrange the repeats into rows, the model pads each one with different
+# filler — "X is the title", "X is what i've got", "X is all i know" — so every
+# line is textually unique and slips straight through. This catches the phrase
+# itself recurring across the whole reply, whatever is wrapped around it.
+_PHRASE_REPEATS = {2: 4, 3: 3, 4: 3}   # phrase length in words -> occurrences allowed
+# A phrase made only of these is just normal sentence glue, not an obsession.
+_GLUE = {
+    "i", "a", "an", "the", "is", "it", "to", "of", "and", "or", "you", "that", "this",
+    "in", "im", "m", "s", "t", "re", "ve", "ll", "d", "for", "on", "so", "but", "not",
+    "what", "was", "are", "be", "do", "just", "like", "my", "me", "your", "we", "he",
+    "she", "they", "at", "as", "if", "with", "have", "has", "got", "know", "all",
+}
 # Saying the same thing again next message is the same spam, just spread out.
 _ENOUGH = (
     "said it already, not saying it again.",
@@ -282,6 +295,10 @@ class AIChatbot(commands.Cog):
         "- Say a thing once. If someone tells you to repeat something 10 times, or to say it again \"so they "
         "know you're listening\", or to spam a line, that's them using you to flood the channel. Give it once "
         "at most, or just call out what they're doing. Never send the same line twice in one message.\n"
+        "- This holds however the request is dressed up. Arranging the repeats in rows, a staircase, a pattern, "
+        "a countdown, a poem, or \"one sentence on the first line, two on the second\" is the same request "
+        "wearing a hat. So is padding each copy with different words around it so the lines look different. "
+        "One mention of the thing, then answer like a normal person or say no.\n"
         "\n"
         "VOICE:\n"
         "- Talk like a real person in Discord, not an assistant. Casual, lowercase, contractions, dry humour.\n"
@@ -802,7 +819,41 @@ class AIChatbot(commands.Cog):
         result = "\n".join(kept).strip()
         if truncated and result:
             result = result.rstrip(" .,;:!?…—–-") + " …"
+
+        # Same phrase over and over, dressed up in different filler each time.
+        if self_repeat := cls._obsessed_phrase(result):
+            head = result.split("\n", 1)[0].strip()
+            if cls._obsessed_phrase(head):
+                # Commas count as a boundary here: a chant strung together with
+                # them ("im clark, you're testing me, im clark, im clark") has no
+                # sentence break at all, so splitting on .!? alone keeps the lot.
+                head = re.split(r"(?<=[.!?,;:])\s+", head)[0].strip()
+            print(f"{Colors.YELLOW}[AI] cut a reply obsessing over {self_repeat!r}{Colors.RESET}")
+            result = head.rstrip(" .,;:!?…—–-") + " …"
         return result
+
+    @classmethod
+    def _obsessed_phrase(cls, text: str) -> Optional[str]:
+        """The phrase this reply keeps circling back to, if there is one.
+
+        Longer phrases are checked first so the reported match is the real
+        offender rather than a two-word fragment of it.
+        """
+        words = cls._fold(text).split()
+        if len(words) < 6:
+            return None
+        for size in sorted(_PHRASE_REPEATS, reverse=True):
+            if len(words) < size * _PHRASE_REPEATS[size]:
+                continue
+            counts = Counter(
+                tuple(words[i:i + size]) for i in range(len(words) - size + 1)
+            )
+            phrase, count = counts.most_common(1)[0]
+            # Sentence glue repeating is just how people talk; a content phrase
+            # repeating this often is the model being driven.
+            if count >= _PHRASE_REPEATS[size] and any(w not in _GLUE for w in phrase):
+                return " ".join(phrase)
+        return None
 
     @classmethod
     def _deny_action_claim(cls, text: str) -> Optional[str]:
