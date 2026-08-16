@@ -11,15 +11,10 @@ import sys
 
 
 async def _init_connection(conn):
-    """Make JSONB behave the way every cog already assumes it does.
+    """Makes JSONB behave the way the cogs already assume it does.
 
-    By default asyncpg hands JSON/JSONB back as a raw string and refuses to
-    encode anything that isn't one. Three cogs were written against the opposite
-    assumption — passing a Python list straight at a JSONB column and reading one
-    back — so /log setup and /selfrole raised on every insert and silently saved
-    nothing. Registering the codec here fixes all of them at once, and keeps the
-    behaviour consistent for anything added later.
-    """
+    asyncpg hands JSON back as a raw string and refuses to encode anything else,
+    so passing a list at a JSONB column raised on every insert."""
     for typename in ("json", "jsonb"):
         await conn.set_type_codec(
             typename,
@@ -50,12 +45,9 @@ class MyBot(commands.AutoShardedBot):
         self.db_pool = None
 
     async def on_app_command_error(self, interaction: discord.Interaction, error):
-        """Fallback handler for every slash command that doesn't define its own.
-
-        A failed permission check raises before the callback body runs, so nothing
-        has acknowledged the interaction yet. Without this the user just sees
-        "application did not respond" and the log says nothing about why.
-        """
+        """Fallback for any command without its own handler. A failed check raises
+        before the callback runs, so without this you just get "application did
+        not respond" and nothing in the log."""
         if isinstance(error, app_commands.MissingPermissions):
             missing = ", ".join(p.replace("_", " ") for p in error.missing_permissions)
             body = f"You need the **{missing}** permission to use that."
@@ -83,7 +75,7 @@ class MyBot(commands.AutoShardedBot):
             pass
 
     async def setup_hook(self):
-        # Cogs with their own cog_app_command_error still win; this catches the rest.
+        # Cogs with their own handler still win, this catches the rest.
         self.tree.on_error = self.on_app_command_error
 
         # 1. Connect to Database first

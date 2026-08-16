@@ -1,15 +1,16 @@
 """
 utils/__init__.py
 -----------------
-Central export point for Clark shared utilities.
+Shared helpers. Import from here, not from the submodules.
 """
 from .colors import Colors
-from .views  import styled_view, section_view
+from .embeds import CLARK_COLOUR, embed, error_embed
 from .db     import ensure_bigint_columns
 
 __all__ = [
     "Colors",
-    "styled_view",
-    "section_view",
+    "CLARK_COLOUR",
+    "embed",
+    "error_embed",
     "ensure_bigint_columns",
 ]

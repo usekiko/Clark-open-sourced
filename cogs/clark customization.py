@@ -1,7 +1,10 @@
 import discord
 import traceback
 from discord.ext import commands
-from discord import app_commands, ui
+from discord import app_commands
+
+from utils import embed, error_embed
+
 
 class Colors:
     RESET = '\033[0m'
@@ -17,27 +20,10 @@ class Colors:
 class Settings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.embed_color = 0x5a63f7
-        self.response_thumbnail_accessory = None 
-        # Task to initialize the profile accessory
-        self.bot.loop.create_task(self.setup_bot_profile())
 
-    async def setup_bot_profile(self):
-        """Initializes the accessory with the Bot/Server avatar."""
-        await self.bot.wait_until_ready()
-        if self.bot.user:
-            self.response_thumbnail_accessory = ui.Thumbnail(media=self.bot.user.display_avatar.url)
-
-    def _create_styled_view(self, status: str, title: str, description: str, interaction: discord.Interaction) -> ui.LayoutView:
-        header = ui.TextDisplay(f"**{title}**")
-        sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        body = ui.TextDisplay(description)
-        
-        container = ui.Container(header, sep, body)
-        
-        view = ui.LayoutView(timeout=None)
-        view.add_item(container)
-        return view
+    def _embed(self, status: str, title: str, description: str) -> discord.Embed:
+        """status is ERROR/SUCCESS/INFO - only ERROR changes the colour."""
+        return error_embed(title, description) if status == "ERROR" else embed(title, description)
     
     async def cog_app_command_error(self, interaction: discord.Interaction,
                                     error: app_commands.AppCommandError):
@@ -60,11 +46,11 @@ class Settings(commands.Cog):
             traceback.print_exception(type(error), error, error.__traceback__)
 
         try:
-            view = self._create_styled_view('ERROR', title, body, interaction)
+            e = self._embed('ERROR', title, body)
             if interaction.response.is_done():
-                await interaction.followup.send(view=view, ephemeral=True)
+                await interaction.followup.send(embed=e, ephemeral=True)
             else:
-                await interaction.response.send_message(view=view, ephemeral=True)
+                await interaction.response.send_message(embed=e, ephemeral=True)
         except discord.HTTPException:
             pass
 
@@ -72,18 +58,15 @@ class Settings(commands.Cog):
     
     async def _check_db_ready(self, interaction: discord.Interaction) -> bool:
         if not hasattr(self.bot, 'db_pool') or self.bot.db_pool is None:
-            view = self._create_styled_view('ERROR', "Database Not Ready", "The database connection is not yet established.", interaction)
-            await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('ERROR', "Database Not Ready", "The database connection is not yet established.")
+            await interaction.response.send_message(embed=e, ephemeral=True)
             return False
         return True
 
     def _invalidate_ai_gate(self, guild_id: int):
-        """Drop only the cached on/off + channel-whitelist + persona lookup.
-
-        The AI cog caches that for a minute, so without this a /clark on, off or
-        channel change wouldn't take effect until the entry expired. Deliberately
-        leaves the conversation context alone — toggling the chatbot shouldn't
-        also wipe what Clark remembers."""
+        """Drops just the cached on/off + whitelist + persona lookup, so an on,
+        off or channel change lands straight away. Leaves the conversation alone -
+        toggling the chatbot shouldn't wipe what he remembers."""
         cog = self.bot.get_cog("AIChatbot")
         if cog is not None and hasattr(cog, "invalidate_config"):
             cog.invalidate_config(guild_id)
@@ -137,8 +120,8 @@ class Settings(commands.Cog):
             
             await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
-            view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
-            await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.")
+            await interaction.response.send_message(embed=e, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Mode command error: {e}{Colors.RESET}")
             await interaction.response.send_message("Database error occurred.", ephemeral=True)
@@ -148,8 +131,8 @@ class Settings(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_instruction(self, interaction: discord.Interaction, instruction: str):
         if len(instruction) > 400:
-            view = self._create_styled_view('INFO', "Character Limit Exceeded", "Maximum instruction length is 400 characters.", interaction)
-            return await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('INFO', "Character Limit Exceeded", "Maximum instruction length is 400 characters.")
+            return await interaction.response.send_message(embed=e, ephemeral=True)
         
         if not await self._check_db_ready(interaction): return
         try:
@@ -163,8 +146,8 @@ class Settings(commands.Cog):
             await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
             
-            view = self._create_styled_view('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.", interaction)
-            await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.")
+            await interaction.response.send_message(embed=e, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Instruction command error: {e}{Colors.RESET}")
 
@@ -181,8 +164,8 @@ class Settings(commands.Cog):
             
             await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
-            view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
-            await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.")
+            await interaction.response.send_message(embed=e, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Reset error: {e}{Colors.RESET}")
 
@@ -201,8 +184,8 @@ class Settings(commands.Cog):
                 f"Forgot {cleared} exchange{'' if cleared == 1 else 's'} across every channel.\n"
                 "Clark now starts fresh with everyone here."
             ) if cleared else "There was nothing left to forget."
-            view = self._create_styled_view('SUCCESS', "Context Cleared", body, interaction)
-            await interaction.followup.send(view=view, ephemeral=True)
+            e = self._embed('SUCCESS', "Context Cleared", body)
+            await interaction.followup.send(embed=e, ephemeral=True)
         except Exception as e:
             print(f"{Colors.RED}[ERROR] Clear context error: {e}{Colors.RESET}")
             await interaction.followup.send("Database error occurred.", ephemeral=True)
@@ -214,8 +197,8 @@ class Settings(commands.Cog):
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, TRUE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=TRUE", interaction.guild.id, interaction.guild.name)
         self._invalidate_ai_gate(interaction.guild.id)
-        view = self._create_styled_view('SUCCESS', "AI Responses Enabled", "Clark will now respond to mentions.", interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        e = self._embed('SUCCESS', "AI Responses Enabled", "Clark will now respond to mentions.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @clark_group.command(name="off", description="Turns the mention chatbot feature off.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -224,8 +207,8 @@ class Settings(commands.Cog):
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, FALSE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=FALSE", interaction.guild.id, interaction.guild.name)
         self._invalidate_ai_gate(interaction.guild.id)
-        view = self._create_styled_view('SUCCESS', "AI Responses Disabled", "Clark will no longer respond to mentions.", interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        e = self._embed('SUCCESS', "AI Responses Disabled", "Clark will no longer respond to mentions.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @clark_group.command(name="add_channel", description="Whitelist a channel for Clark.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -234,8 +217,8 @@ class Settings(commands.Cog):
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("INSERT INTO allowed_channels (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", interaction.guild.id, channel.id)
         self._invalidate_ai_gate(interaction.guild.id)
-        view = self._create_styled_view('SUCCESS', "Channel Whitelisted", f"{channel.mention} added to allowed channels.", interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        e = self._embed('SUCCESS', "Channel Whitelisted", f"{channel.mention} added to allowed channels.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @clark_group.command(name="remove_channel", description="Remove a channel whitelist.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -244,8 +227,8 @@ class Settings(commands.Cog):
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1 AND channel_id = $2", interaction.guild.id, channel.id)
         self._invalidate_ai_gate(interaction.guild.id)
-        view = self._create_styled_view('SUCCESS', "Channel Removed", f"{channel.mention} removed from allowed channels.", interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        e = self._embed('SUCCESS', "Channel Removed", f"{channel.mention} removed from allowed channels.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @clark_group.command(name="clear_channels", description="Respond in all channels.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -254,8 +237,8 @@ class Settings(commands.Cog):
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1", interaction.guild.id)
         self._invalidate_ai_gate(interaction.guild.id)
-        view = self._create_styled_view('SUCCESS', "Channel Restrictions Cleared", "Clark will respond in all channels.", interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        e = self._embed('SUCCESS', "Channel Restrictions Cleared", "Clark will respond in all channels.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @clark_group.command(name="list_channels", description="List allowed channels.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -265,11 +248,11 @@ class Settings(commands.Cog):
             res = await conn.fetch("SELECT channel_id FROM allowed_channels WHERE guild_id = $1", interaction.guild.id)
         
         if not res: 
-            view = self._create_styled_view('SUCCESS', "Channel Access", "No restrictions configured. Clark responds in all channels.", interaction)
+            e = self._embed('SUCCESS', "Channel Access", "No restrictions configured. Clark responds in all channels.")
         else:
             mentions = [interaction.guild.get_channel(int(r['channel_id'])).mention for r in res if interaction.guild.get_channel(int(r['channel_id']))]
-            view = self._create_styled_view('SUCCESS', "Allowed Channels", "\n".join(mentions), interaction)
-        await interaction.response.send_message(view=view, ephemeral=True)
+            e = self._embed('SUCCESS', "Allowed Channels", "\n".join(mentions))
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Settings(bot))

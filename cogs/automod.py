@@ -5,7 +5,7 @@ import datetime
 import asyncio
 import logging
 
-from utils import styled_view
+from utils import embed
 
 logger = logging.getLogger("AutoModCog")
 
@@ -153,16 +153,16 @@ class AutoMod(commands.GroupCog, name="automod"):
                     log_changes.append(f"Set Mention Limit to {mention_limit}")
 
             if not log_changes:
-                return await itx.followup.send(view=styled_view("No Changes", "No changes were specified."))
+                return await itx.followup.send(embed=embed("No Changes", "No changes were specified."))
 
             summary = "\n".join(log_changes)
-            await itx.followup.send(view=styled_view("AutoMod Configuration", summary))
+            await itx.followup.send(embed=embed("AutoMod Configuration", summary))
 
         except discord.Forbidden:
-            await itx.followup.send(view=styled_view("Error", "Insufficient permissions. Administrator access required."))
+            await itx.followup.send(embed=embed("Error", "Insufficient permissions. Administrator access required."))
         except Exception as e:
             logger.error(f"AutoMod Config Error: {e}")
-            await itx.followup.send(view=styled_view("Error", str(e)))
+            await itx.followup.send(embed=embed("Error", str(e)))
 
 async def setup(bot):
     await bot.add_cog(AutoMod(bot))

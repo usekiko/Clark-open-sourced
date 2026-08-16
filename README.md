@@ -15,32 +15,23 @@
 
 ## What is Clark?
 
-Clark is a general-purpose Discord bot that handles the things most servers need from a fleet of separate bots — moderation, welcome messages, verification, leveling, tickets, and self-roles — in one place. It runs as an `AutoShardedBot`, so it's built to scale across many servers, and stores per-guild configuration in a PostgreSQL database.
+Clark is a general-purpose Discord bot that handles the things most servers need from a fleet of separate bots — moderation, automod, logging, welcome messages and an economy — in one place. It runs as an `AutoShardedBot`, so it's built to scale across many servers, and stores per-guild configuration in a PostgreSQL database.
 
-Every feature is a self-contained cog that loads at startup, and commands are exposed as Discord slash commands. Clark also ships an AI chatbot (powered by Groq) with switchable personalities, so members can talk to the bot directly in chat.
+Every feature is a self-contained cog that loads at startup, and commands are exposed as Discord slash commands. Clark also ships an AI chatbot (powered by Groq) with switchable personalities, so members can talk to him directly in chat.
 
 This is the open-sourced code of Clark, released under the AGPL-3.0 license.
 
 ## Features
 
 - **AI Chatbot** — Groq-powered conversational AI with three switchable personalities (friendly, rude, strict) and per-server custom instructions.
-- **Moderation** — Standard moderation commands (ban, kick, timeout, purge, and more) backed by persistent case tracking.
-- **AutoMod** — Automated rule enforcement for spam, banned words, and unwanted content.
-- **Logging** — Detailed event logging for messages, members, moderation actions, and server changes.
-- **Verification** — Gate new members behind a verification step before they can access the server.
-- **Welcomer & Goodbyer** — Customizable join and leave messages, with image support via Pillow.
-- **Leveling** — XP and level progression to reward active members.
-- **Self-Roles** — Button- and menu-based self-assignable roles.
-- **Tickets** — A full support-ticket system with panels, claims, and transcripts.
-- **Forms** — Build and collect structured submissions from members.
-- **Introductions** — Guided introduction prompts for new members.
-- **Reminders** — Personal reminders that fire back in Discord.
-- **Analytics** — Server activity and growth metrics.
-- **Fun Commands** — Jokes, facts, memes, roasts, and more from bundled content packs.
-- **Customization** — Rebrand Clark's replies, embeds, and behavior per server.
-- **Help Menu** — Interactive, category-based slash-command help.
-
-> Note: the economy module (`cogs/economy-underwork.py`) is a work in progress and not production-ready.
+- **Moderation** — Ban, kick, timeout, purge, warnings and more, all backed by persistent case tracking.
+- **AutoMod** — Automated rule enforcement for spam, banned words and unwanted content.
+- **Logging** — Event logging for messages, members, moderation actions and server changes.
+- **Welcomer & Goodbyer** — Customizable join and leave messages.
+- **Economy** — Currency, jobs, gambling and per-server tuning of every payout and cooldown.
+- **Fun Commands** — Jokes, facts, memes, roasts and more from bundled content packs.
+- **Customization** — Rebrand Clark's replies and behaviour per server.
+- **Help Menu** — Interactive help, generated from the live command tree so it never goes stale.
 
 ## Tech Stack
 
@@ -48,7 +39,6 @@ This is the open-sourced code of Clark, released under the AGPL-3.0 license.
 - **Framework:** [discord.py](https://discordpy.readthedocs.io/) 2.6
 - **Database:** [PostgreSQL](https://www.postgresql.org/) via [asyncpg](https://magicstack.github.io/asyncpg/) (connection pool)
 - **AI:** [Groq](https://groq.com/) (`groq` async client)
-- **Media:** [Pillow](https://python-pillow.org/), [yt-dlp](https://github.com/yt-dlp/yt-dlp), and FFmpeg for image/voice features
 - **Deployment:** [Docker](https://www.docker.com/) (Python 3.14 slim, runs as non-root)
 
 ## Getting Started
@@ -74,7 +64,7 @@ python clark.py
 
 On startup Clark connects to the database, loads every cog in `./cogs`, and syncs its slash commands globally. Global command sync can take up to an hour to propagate the first time — this is a Discord limitation, not a bug.
 
-> FFmpeg must be installed and on your `PATH` for voice and `yt-dlp` features to work. On the Discord Developer Portal, enable the **Server Members**, **Message Content**, and **Presence** privileged intents for your bot.
+> On the Discord Developer Portal, enable the **Server Members**, **Message Content**, and **Presence** privileged intents for your bot.
 
 ## Configuration
 
@@ -92,7 +82,7 @@ Each cog creates its own tables on first run, so you only need to provide an emp
 
 ## Running with Docker
 
-A `Dockerfile` is included. It installs FFmpeg and the native libraries the bot needs, then runs as a non-root user.
+A `Dockerfile` is included. It installs the native libraries the bot needs, then runs as a non-root user.
 
 ```bash
 # Build the image
@@ -108,8 +98,8 @@ Point `PG_HOST` at a database reachable from inside the container (for example a
 
 ```
 clark.py        # Entry point: bot setup, DB pool, cog loading, command sync
-cogs/           # Feature modules (moderation, tickets, AI, leveling, ...)
-utils/          # Shared helpers (colors, logging, reusable views)
+cogs/           # Feature modules (AI, moderation, automod, logging, economy, ...)
+utils/          # Shared helpers (colours, embeds, schema repair)
 json/           # Content packs for fun commands (jokes, facts, memes, roasts)
 Dockerfile      # Container build
 requirements.txt

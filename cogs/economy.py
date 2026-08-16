@@ -1,11 +1,10 @@
 import discord
 from discord.ext import commands
-from discord import app_commands, ui
+from discord import app_commands
 import random
 import time
 
-from utils.colors import Colors
-from utils.views import StandardView
+from utils import Colors, embed
 
 # Cache TTL in seconds
 _CACHE_TTL = 300  # 5 minutes
@@ -108,22 +107,13 @@ class Economy(commands.Cog):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _view(title: str, description: str) -> StandardView:
-        header    = ui.TextDisplay(f"**{title}**")
-        sep       = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        body      = ui.TextDisplay(description)
-        container = ui.Container(header, sep, body)
-        return StandardView(container)
+    def _embed(title: str, description: str) -> discord.Embed:
+        return embed(title, description)
 
     @staticmethod
-    def _section_view(title: str, description: str, avatar_url: str) -> StandardView:
-        """Rank/balance card using Section + Thumbnail (from embed_like.py pattern)."""
-        header    = ui.TextDisplay(f"**{title}**")
-        body      = ui.TextDisplay(description)
-        thumbnail = ui.Thumbnail(media=avatar_url)
-        section   = ui.Section(header, body, accessory=thumbnail)
-        container = ui.Container(section)
-        return StandardView(container)
+    def _card(title: str, description: str, avatar_url: str) -> discord.Embed:
+        """Balance card - same as _embed but with the user's avatar on the right."""
+        return embed(title, description, thumbnail=avatar_url)
 
     # ------------------------------------------------------------------
     # Commands
@@ -143,11 +133,11 @@ class Economy(commands.Cog):
                 f"Bank: {data['bank']:,} {sym}\n\n"
                 f"Total Balance: {data['wallet'] + data['bank']:,} {cfg['currency_name']}"
             )
-            view = self._section_view(f"{user.display_name}'s Financial Profile", desc, user.display_avatar.url)
-            await interaction.followup.send(view=view)
+            e = self._card(f"{user.display_name}'s Financial Profile", desc, user.display_avatar.url)
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Balance command failed: {e}")
-            await interaction.followup.send(view=self._view("Error", f"Something went wrong: {e}"), ephemeral=True)
+            await interaction.followup.send(embed=self._embed("Error", f"Something went wrong: {e}"), ephemeral=True)
 
     @app_commands.command(name="daily", description="Claim your server-authorized daily stipend.")
     async def daily(self, interaction: discord.Interaction):
@@ -159,8 +149,8 @@ class Economy(commands.Cog):
             now = int(time.time())
             if now < data['last_daily'] + 86400:
                 rem  = (data['last_daily'] + 86400) - now
-                view = self._view("Stipend Locked", f"The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m.")
-                return await interaction.followup.send(view=view)
+                e = self._embed("Stipend Locked", f"The treasury is closed. Available in {rem//3600}h {(rem%3600)//60}m.")
+                return await interaction.followup.send(embed=e)
 
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute(
@@ -168,11 +158,11 @@ class Economy(commands.Cog):
                     cfg['daily_amount'], now, interaction.guild.id, interaction.user.id
                 )
 
-            view = self._view("Daily Stipend", f"Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.")
-            await interaction.followup.send(view=view)
+            e = self._embed("Daily Stipend", f"Withdrew {cfg['daily_amount']:,} {cfg['currency_symbol']} from the treasury.")
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Daily command failed: {e}")
-            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
+            await interaction.followup.send(embed=self._embed("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="work", description="Engage in professional labor for guaranteed income.")
     async def work(self, interaction: discord.Interaction):
@@ -187,8 +177,8 @@ class Economy(commands.Cog):
 
             if now < last_work + cooldown_sec:
                 rem  = (last_work + cooldown_sec) - now
-                view = self._view("Exhausted", f"Wait {rem//60}m {rem%60}s before your next shift.")
-                return await interaction.followup.send(view=view)
+                e = self._embed("Exhausted", f"Wait {rem//60}m {rem%60}s before your next shift.")
+                return await interaction.followup.send(embed=e)
 
             gain = random.randint(cfg['work_min'] or 100, cfg['work_max'] or 500)
             async with self.bot.db_pool.acquire() as conn:
@@ -198,8 +188,8 @@ class Economy(commands.Cog):
                 )
 
             jobs = ["Virtual Real Estate Agent", "AI Ethicist", "Professional Meme Curator", "Lead Developer"]
-            view = self._view("Shift Ended", f"Worked as a {random.choice(jobs)} and earned {gain:,} {cfg['currency_symbol']}.")
-            await interaction.followup.send(view=view)
+            e = self._embed("Shift Ended", f"Worked as a {random.choice(jobs)} and earned {gain:,} {cfg['currency_symbol']}.")
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Work command failed: {e}")
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
@@ -215,8 +205,8 @@ class Economy(commands.Cog):
             cooldown_sec = cfg['stream_cooldown'] * 60
             if now < data['last_stream'] + cooldown_sec:
                 rem  = (data['last_stream'] + cooldown_sec) - now
-                view = self._view("Offline", f"Wait {rem//60}m {rem%60}s to stream again.")
-                return await interaction.followup.send(view=view)
+                e = self._embed("Offline", f"Wait {rem//60}m {rem%60}s to stream again.")
+                return await interaction.followup.send(embed=e)
 
             gain = random.randint(cfg['stream_min'], cfg['stream_max'])
             async with self.bot.db_pool.acquire() as conn:
@@ -224,11 +214,11 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet + $1, last_stream = $2 WHERE guild_id = $3 AND user_id = $4",
                     gain, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Stream Ended", f"Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.")
-            await interaction.followup.send(view=view)
+            e = self._embed("Stream Ended", f"Your stream was successful! Earned {gain:,} {cfg['currency_symbol']} in donations.")
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Stream command failed: {e}")
-            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
+            await interaction.followup.send(embed=self._embed("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="hunt", description="Venture into the forest for resources.")
     async def hunt(self, interaction: discord.Interaction):
@@ -241,8 +231,8 @@ class Economy(commands.Cog):
             cooldown_sec = cfg['hunt_cooldown'] * 60
             if now < data['last_hunt'] + cooldown_sec:
                 rem  = (data['last_hunt'] + cooldown_sec) - now
-                view = self._view("Forest Restock", f"The forest is empty. Wait {rem//60}m {rem%60}s.")
-                return await interaction.followup.send(view=view)
+                e = self._embed("Forest Restock", f"The forest is empty. Wait {rem//60}m {rem%60}s.")
+                return await interaction.followup.send(embed=e)
 
             gain = random.randint(cfg['hunt_min'], cfg['hunt_max'])
             async with self.bot.db_pool.acquire() as conn:
@@ -250,11 +240,11 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet + $1, last_hunt = $2 WHERE guild_id = $3 AND user_id = $4",
                     gain, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Hunt Conclusion", f"Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!")
-            await interaction.followup.send(view=view)
+            e = self._embed("Hunt Conclusion", f"Sold your trophy catch for {gain:,} {cfg['currency_symbol']}!")
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Hunt command failed: {e}")
-            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
+            await interaction.followup.send(embed=self._embed("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="scavenge", description="Explore for high-quality scrap metal.")
     async def scavenge(self, interaction: discord.Interaction):
@@ -267,8 +257,8 @@ class Economy(commands.Cog):
             cooldown_sec = cfg['scavenge_cooldown'] * 60
             if now < data['last_scavenge'] + cooldown_sec:
                 rem  = (data['last_scavenge'] + cooldown_sec) - now
-                view = self._view("Yard Empty", f"Wait {rem//60}m {rem%60}s for new salvage.")
-                return await interaction.followup.send(view=view)
+                e = self._embed("Yard Empty", f"Wait {rem//60}m {rem%60}s for new salvage.")
+                return await interaction.followup.send(embed=e)
 
             gain = random.randint(cfg['scavenge_min'], cfg['scavenge_max'])
             async with self.bot.db_pool.acquire() as conn:
@@ -276,11 +266,11 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet + $1, last_scavenge = $2 WHERE guild_id = $3 AND user_id = $4",
                     gain, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Scavenge Results", f"Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!")
-            await interaction.followup.send(view=view)
+            e = self._embed("Scavenge Results", f"Found high-quality salvage worth {gain:,} {cfg['currency_symbol']}!")
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Scavenge command failed: {e}")
-            await interaction.followup.send(view=self._view("Error", str(e)), ephemeral=True)
+            await interaction.followup.send(embed=self._embed("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="slut", description="Illegal Job: High-risk street hustle for fast cash.")
     async def slut(self, interaction: discord.Interaction):
@@ -292,8 +282,8 @@ class Economy(commands.Cog):
         cooldown_sec = cfg['slut_cooldown'] * 60
         if now < data['last_slut'] + cooldown_sec:
             rem  = (data['last_slut'] + cooldown_sec) - now
-            view = self._view("Street Heat", f"Wait {rem//60}m {rem%60}s for the heat to die down.")
-            return await interaction.followup.send(view=view)
+            e = self._embed("Street Heat", f"Wait {rem//60}m {rem%60}s for the heat to die down.")
+            return await interaction.followup.send(embed=e)
 
         if random.randint(1, 100) <= cfg['slut_fail_rate']:
             loss = random.randint(200, 600)
@@ -302,7 +292,7 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet - $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4",
                     loss, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Intercepted", f"Authorities intercepted the hustle. Fined {loss:,} {cfg['currency_symbol']}.")
+            e = self._embed("Intercepted", f"Authorities intercepted the hustle. Fined {loss:,} {cfg['currency_symbol']}.")
         else:
             gain = random.randint(cfg['slut_min'], cfg['slut_max'])
             async with self.bot.db_pool.acquire() as conn:
@@ -310,28 +300,28 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet + $1, last_slut = $2 WHERE guild_id = $3 AND user_id = $4",
                     gain, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Hustle Paid", f"The hustle was successful. Earned {gain:,} {cfg['currency_symbol']}!")
-        await interaction.followup.send(view=view)
+            e = self._embed("Hustle Paid", f"The hustle was successful. Earned {gain:,} {cfg['currency_symbol']}!")
+        await interaction.followup.send(embed=e)
 
     @app_commands.command(name="rob", description="Heist another user for a percentage of their wallet.")
     async def rob(self, interaction: discord.Interaction, target: discord.Member):
         await interaction.response.defer()
         cfg = await self.get_config(interaction.guild.id)
         if target.id == interaction.user.id:
-            return await interaction.followup.send(view=self._view("Constraint Error", "Self-robbery is prohibited."))
+            return await interaction.followup.send(embed=self._embed("Constraint Error", "Self-robbery is prohibited."))
 
         now          = int(time.time())
         data         = await self._get_user_data(interaction.guild.id, interaction.user.id)
         cooldown_sec = cfg['rob_cooldown'] * 60
         if now < data['last_rob'] + cooldown_sec:
             rem  = (data['last_rob'] + cooldown_sec) - now
-            view = self._view("Surveillance", f"Wait {rem//60}m {rem%60}s before your next attempt.")
-            return await interaction.followup.send(view=view)
+            e = self._embed("Surveillance", f"Wait {rem//60}m {rem%60}s before your next attempt.")
+            return await interaction.followup.send(embed=e)
 
         vic = await self._get_user_data(interaction.guild.id, target.id)
         if vic['wallet'] < cfg['rob_min_wallet']:
-            view = self._view("Poor Target", f"Target wallet is below the threshold (Min {cfg['rob_min_wallet']} required).")
-            return await interaction.followup.send(view=view)
+            e = self._embed("Poor Target", f"Target wallet is below the threshold (Min {cfg['rob_min_wallet']} required).")
+            return await interaction.followup.send(embed=e)
 
         if random.randint(1, 100) <= cfg['rob_fail_rate']:
             fine = random.randint(400, 1000)
@@ -340,7 +330,7 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet - $1, last_rob = $2 WHERE guild_id = $3 AND user_id = $4",
                     fine, now, interaction.guild.id, interaction.user.id
                 )
-            view = self._view("Heist Failed", f"Heist blown! You were caught and paid {fine} {cfg['currency_symbol']} in legal fees.")
+            e = self._embed("Heist Failed", f"Heist blown! You were caught and paid {fine} {cfg['currency_symbol']} in legal fees.")
         else:
             stolen = random.randint(100, max(100, int(vic['wallet'] * 0.45)))
             async with self.bot.db_pool.acquire() as conn:
@@ -352,8 +342,8 @@ class Economy(commands.Cog):
                     "UPDATE economy_users SET wallet = wallet - $1 WHERE guild_id = $2 AND user_id = $3",
                     stolen, interaction.guild.id, target.id
                 )
-            view = self._view("Clean Job", f"Successful heist! Snatched {stolen:,} {cfg['currency_symbol']} from {target.mention}!")
-        await interaction.followup.send(view=view)
+            e = self._embed("Clean Job", f"Successful heist! Snatched {stolen:,} {cfg['currency_symbol']} from {target.mention}!")
+        await interaction.followup.send(embed=e)
 
     @app_commands.command(name="deposit", description="Transfer cash to vault.")
     async def deposit(self, interaction: discord.Interaction, amount: str):
@@ -363,17 +353,17 @@ class Economy(commands.Cog):
         try:
             amt = data['wallet'] if amount.lower() == 'all' else int(amount)
         except ValueError:
-            return await interaction.followup.send(view=self._view("Input Error", "Numeric input or 'all' is required."))
+            return await interaction.followup.send(embed=self._embed("Input Error", "Numeric input or 'all' is required."))
 
         if amt <= 0 or data['wallet'] < amt:
-            return await interaction.followup.send(view=self._view("Insufficient Funds", "You do not have enough liquid funds to deposit."))
+            return await interaction.followup.send(embed=self._embed("Insufficient Funds", "You do not have enough liquid funds to deposit."))
 
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute(
                 "UPDATE economy_users SET wallet = wallet - $1, bank = bank + $2 WHERE guild_id = $3 AND user_id = $4",
                 amt, amt, interaction.guild.id, interaction.user.id
             )
-        await interaction.followup.send(view=self._view("Vault Deposit", f"Stored {amt:,} {cfg['currency_symbol']} in the vault."))
+        await interaction.followup.send(embed=self._embed("Vault Deposit", f"Stored {amt:,} {cfg['currency_symbol']} in the vault."))
 
     @app_commands.command(name="withdraw", description="Release currency from vault.")
     async def withdraw(self, interaction: discord.Interaction, amount: str):
@@ -383,17 +373,17 @@ class Economy(commands.Cog):
         try:
             amt = data['bank'] if amount.lower() == 'all' else int(amount)
         except ValueError:
-            return await interaction.followup.send(view=self._view("Input Error", "Numeric input or 'all' is required."))
+            return await interaction.followup.send(embed=self._embed("Input Error", "Numeric input or 'all' is required."))
 
         if amt <= 0 or data['bank'] < amt:
-            return await interaction.followup.send(view=self._view("Insufficient Funds", "You do not have enough vault balance to withdraw."))
+            return await interaction.followup.send(embed=self._embed("Insufficient Funds", "You do not have enough vault balance to withdraw."))
 
         async with self.bot.db_pool.acquire() as conn:
             await conn.execute(
                 "UPDATE economy_users SET wallet = wallet + $1, bank = bank - $2 WHERE guild_id = $3 AND user_id = $4",
                 amt, amt, interaction.guild.id, interaction.user.id
             )
-        await interaction.followup.send(view=self._view("Vault Withdrawal", f"Released {amt:,} {cfg['currency_symbol']} into your active wallet."))
+        await interaction.followup.send(embed=self._embed("Vault Withdrawal", f"Released {amt:,} {cfg['currency_symbol']} into your active wallet."))
 
     @app_commands.command(name="pay", description="Transfer currency to another user.")
     async def pay(self, interaction: discord.Interaction, member: discord.Member, amount: int):
@@ -401,15 +391,15 @@ class Economy(commands.Cog):
         cfg = await self.get_config(interaction.guild.id)
 
         if member.id == interaction.user.id:
-            return await interaction.followup.send(view=self._view("Invalid Transfer", "You cannot transfer currency to yourself."))
+            return await interaction.followup.send(embed=self._embed("Invalid Transfer", "You cannot transfer currency to yourself."))
         if member.bot:
-            return await interaction.followup.send(view=self._view("Invalid Recipient", "You cannot transfer currency to bots."))
+            return await interaction.followup.send(embed=self._embed("Invalid Recipient", "You cannot transfer currency to bots."))
         if amount <= 0:
-            return await interaction.followup.send(view=self._view("Invalid Amount", "Amount must be greater than 0."))
+            return await interaction.followup.send(embed=self._embed("Invalid Amount", "Amount must be greater than 0."))
 
         sender_data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         if sender_data['wallet'] < amount:
-            return await interaction.followup.send(view=self._view("Insufficient Funds", f"You do not have enough {cfg['currency_name']} in your wallet."))
+            return await interaction.followup.send(embed=self._embed("Insufficient Funds", f"You do not have enough {cfg['currency_name']} in your wallet."))
 
         # Ensure recipient row exists
         await self._get_user_data(interaction.guild.id, member.id)
@@ -424,19 +414,19 @@ class Economy(commands.Cog):
                 amount, interaction.guild.id, member.id
             )
 
-        view = self._view("Transfer Complete", f"Transferred {amount:,} {cfg['currency_symbol']} to {member.mention}.")
-        await interaction.followup.send(view=view)
+        e = self._embed("Transfer Complete", f"Transferred {amount:,} {cfg['currency_symbol']} to {member.mention}.")
+        await interaction.followup.send(embed=e)
 
     @app_commands.command(name="slots", description="Risk your currency on the high-end slot machine.")
     async def slots(self, interaction: discord.Interaction, bet: int):
         await interaction.response.defer()
         cfg = await self.get_config(interaction.guild.id)
         if bet < 50:
-            return await interaction.followup.send(view=self._view("Min Bet", f"Minimum bet is 50 {cfg['currency_name']}."))
+            return await interaction.followup.send(embed=self._embed("Min Bet", f"Minimum bet is 50 {cfg['currency_name']}."))
 
         data = await self._get_user_data(interaction.guild.id, interaction.user.id)
         if data['wallet'] < bet:
-            return await interaction.followup.send(view=self._view("Insufficient Funds", "Wallet balance too low for this bet."))
+            return await interaction.followup.send(embed=self._embed("Insufficient Funds", "Wallet balance too low for this bet."))
 
         icons     = ["<:diamond:1470522339958460591>", "<:cherry:1470522699364171879>", "<:ticket:1470523139229483151>", "<:gold:1470522343267766373>", "<:emerald:1470522362003718348>", "<:quartz:1470522360212750572>"]
         fail_rate = cfg.get('slots_fail_rate', 35)
@@ -473,7 +463,7 @@ class Economy(commands.Cog):
             )
 
         desc = f"[ {r[0]} | {r[1]} | {r[2]} ]\n\n{msg}"
-        await interaction.followup.send(view=self._view(title, desc))
+        await interaction.followup.send(embed=self._embed(title, desc))
 
     @app_commands.command(name="economy-config", description="Admin: Configure all economy variables.")
     @app_commands.describe(slots_fail_rate="Percentage (1-100) of spins that will be forced losses.")
@@ -528,7 +518,7 @@ class Economy(commands.Cog):
 
         # Invalidate cache so next call fetches fresh data
         self._settings_cache.pop(interaction.guild.id, None)
-        await interaction.followup.send(view=self._view("System Configured", "Changes applied!"), ephemeral=True)
+        await interaction.followup.send(embed=self._embed("System Configured", "Changes applied!"), ephemeral=True)
 
     # ------------------------------------------------------------------
     # Listeners
@@ -539,11 +529,11 @@ class Economy(commands.Cog):
         await self.setup_database()
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        view = self._view("Error", str(error))
+        e = self._embed("Error", str(error))
         if not interaction.response.is_done():
-            await interaction.response.send_message(view=view, ephemeral=True)
+            await interaction.response.send_message(embed=e, ephemeral=True)
         else:
-            await interaction.followup.send(view=view, ephemeral=True)
+            await interaction.followup.send(embed=e, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

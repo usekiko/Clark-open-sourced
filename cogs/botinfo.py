@@ -1,8 +1,10 @@
 import discord
 from discord.ext import commands
-from discord import app_commands, ui
+from discord import app_commands
 import time
 import os
+
+from utils import embed
 
 class BotInfo(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -49,47 +51,18 @@ class BotInfo(commands.Cog):
             memory = self.get_memory_usage()
             uptime = self.format_uptime()
             
-            header = ui.TextDisplay("**Clark information**")
-            sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-            subtitle = ui.TextDisplay("**Global bot statistics and performance metrics**")
-            
-            dev_section = ui.TextDisplay(
-                f"**Developer**\n"
-                f"[usekiko](https://usekiko.com)"
-            )
-            
-            server_section = ui.TextDisplay(
-                f"**Server Statistics**\n"
-                f"Servers: {server_count:,}\n"
-                f"Total Users: {total_users:,}"
-            )
-            
-            shard_section = ui.TextDisplay(
-                f"**Shard Information**\n"
-                f"Shards: {shard_count}\n"
-                f"API Latency: {latency}ms"
-            )
-            
-            perf_section = ui.TextDisplay(
-                f"**Performance**\n"
-                f"Memory Usage: {memory}\n"
-                f"Uptime: {uptime}"
-            )
-            
-            container = ui.Container(
-                header,
-                sep,
-                subtitle,
-                dev_section,
-                server_section,
-                shard_section,
-                perf_section
-            )
-            
-            view = ui.LayoutView()
-            view.add_item(container)
-            
-            await interaction.followup.send(view=view)
+            e = embed("Clark information", "Global bot statistics and performance metrics")
+            if self.bot.user:
+                e.set_thumbnail(url=self.bot.user.display_avatar.url)
+            e.add_field(name="Developer", value="[usekiko](https://usekiko.com)", inline=False)
+            e.add_field(name="Servers", value=f"{server_count:,}")
+            e.add_field(name="Total Users", value=f"{total_users:,}")
+            e.add_field(name="Shards", value=str(shard_count))
+            e.add_field(name="API Latency", value=f"{latency}ms")
+            e.add_field(name="Memory", value=memory)
+            e.add_field(name="Uptime", value=uptime)
+
+            await interaction.followup.send(embed=e)
         except Exception as e:
             print(f"[ERROR] Botinfo command failed: {e}")
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)

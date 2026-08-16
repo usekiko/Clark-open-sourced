@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Dict, List, Optional, Literal, Tuple
 
-from utils import styled_view, Colors
+from utils import embed, Colors
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -105,9 +105,9 @@ class Logging(commands.Cog):
         if not log_channel or not isinstance(log_channel, discord.TextChannel):
             return
 
-        view = styled_view(title, description)
+        e = embed(title, description)
         try:
-            await log_channel.send(view=view)
+            await log_channel.send(embed=e)
         except Exception as e:
             print(f"{Colors.RED}[ERROR]        Logging send failed (guild={guild_id}): {e}{Colors.RESET}")
 
@@ -168,25 +168,21 @@ class Logging(commands.Cog):
 
                 events_str = "\n".join(LOGGABLE_EVENTS[e] for e in selected)
                 desc = f"Channel: {log_channel.mention}\n\nEnabled Events\n{events_str}"
-                await itx.response.edit_message(content=None, view=styled_view("Logging Configured", desc))
+                await itx.response.edit_message(content=None, embed=embed("Logging Configured", desc))
             except Exception as e:
                 print(f"{Colors.RED}[ERROR]        log_setup callback: {e}{Colors.RESET}")
                 await itx.response.edit_message(
-                    content=None, view=styled_view("Configuration Failed", "A database error occurred.")
+                    content=None, embed=embed("Configuration Failed", "A database error occurred.")
                 )
 
         select_menu.callback = select_callback
 
-        header    = ui.TextDisplay("**Configure Logging**")
-        sep       = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        body      = ui.TextDisplay("Select which events to log from the dropdown below.")
-        container = ui.Container(header, sep, body)
-        action_row = ui.ActionRow(select_menu)
-
-        prompt_view = ui.LayoutView()
-        prompt_view.add_item(container)
-        prompt_view.add_item(action_row)
-        await interaction.followup.send(view=prompt_view, ephemeral=True)
+        prompt_view = ui.View(timeout=180)
+        prompt_view.add_item(select_menu)
+        await interaction.followup.send(
+            embed=embed("Configure Logging", "Select which events to log from the dropdown below."),
+            view=prompt_view, ephemeral=True,
+        )
 
     @log.command(name="disable", description="Disable logging for this server.")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -198,23 +194,23 @@ class Logging(commands.Cog):
         self._invalidate_cache(interaction.guild_id)
         rows = int(status.split()[-1])
         if rows == 0:
-            view = styled_view("Not Configured", "Logging is not enabled on this server.")
+            e = embed("Not Configured", "Logging is not enabled on this server.")
         else:
-            view = styled_view("Logging Disabled", "Event logging has been turned off.")
-        await interaction.response.send_message(view=view, ephemeral=True)
+            e = embed("Logging Disabled", "Event logging has been turned off.")
+        await interaction.response.send_message(embed=e, ephemeral=True)
 
     @log_setup.error
     @log_disable.error
     async def _on_log_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
-            view = styled_view("Access Denied", "Manage Guild permission required.")
+            e = embed("Access Denied", "Manage Guild permission required.")
         else:
             print(f"{Colors.RED}[ERROR]        log command error: {error}{Colors.RESET}")
-            view = styled_view("Error", "An unexpected error occurred.")
+            e = embed("Error", "An unexpected error occurred.")
         if not interaction.response.is_done():
-            await interaction.response.send_message(view=view, ephemeral=True)
+            await interaction.response.send_message(embed=e, ephemeral=True)
         else:
-            await interaction.followup.send(view=view, ephemeral=True)
+            await interaction.followup.send(embed=e, ephemeral=True)
 
     # -----------------------------------------------------------------------
     # Event listeners

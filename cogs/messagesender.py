@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands, ui
 import logging
 
+from utils import CLARK_COLOUR
+
 logger = logging.getLogger("MessageSender")
 
 @app_commands.default_permissions(administrator=True)
@@ -17,28 +19,28 @@ class MessageSender(commands.GroupCog, name="message"):
         hex_code = hex_code.strip()
         return hex_code if hex_code.startswith("#") else f"#{hex_code}"
 
-    @app_commands.command(name="send", description="Send a Message Container or Plain Text")
+    @app_commands.command(name="send", description="Send an embed or plain text to a channel")
     @app_commands.describe(
         channel="Where to send the message",
-        mode="Message Container (v2) or Plain Text",
+        mode="Embed or Plain Text",
         content="The main message body",
-        title="Title for the container",
-        thumbnail_type="Add an accessory (Required for Section layout)",
-        media_url="Add an image to the media gallery",
+        title="Embed title",
+        thumbnail_type="Thumbnail shown in the top right",
+        media_url="Large image shown at the bottom",
         button_name="Label for a link button",
         button_link="The URL for the button",
-        accent_color="Hex color for the left border (leave empty for none)",
-        show_separator="Add a thin line between text and media"
+        accent_color="Hex colour for the left bar",
+        show_separator="Add a divider under the text"
     )
     @app_commands.choices(
         mode=[
-            app_commands.Choice(name="Message Container", value="container"),
+            app_commands.Choice(name="Embed", value="container"),
             app_commands.Choice(name="Plain Text", value="text")
         ],
         thumbnail_type=[
             app_commands.Choice(name="Server Icon", value="server"),
             app_commands.Choice(name="User Avatar", value="user"),
-            app_commands.Choice(name="Invisible/None (Dummy Button)", value="none")
+            app_commands.Choice(name="None", value="none")
         ]
     )
     @app_commands.checks.has_permissions(administrator=True)
@@ -64,54 +66,33 @@ class MessageSender(commands.GroupCog, name="message"):
                 await channel.send(content=content)
                 return await itx.followup.send("Plain text message sent.")
 
-            # 2. LayoutView Mode
-            view = ui.LayoutView()
+            # 2. Embed mode
+            hex_val = self.format_hex(accent_color)
+            clr = discord.Colour.from_str(hex_val) if hex_val else discord.Colour(CLARK_COLOUR)
 
-            # --- Forced Accessory Logic ---
-            # Discord requires an accessory for the Section to render correctly.
+            e = discord.Embed(title=title, description=content, colour=clr)
+
             if thumbnail_type == "server" and itx.guild.icon:
-                accessory = ui.Thumbnail(media=itx.guild.icon.url)
+                e.set_thumbnail(url=itx.guild.icon.url)
             elif thumbnail_type == "user":
-                accessory = ui.Thumbnail(media=itx.user.display_avatar.url)
-            else:
-                # If 'None' is chosen, we use a URL button as a dummy accessory 
-                # This satisfies the requirement while remaining functional.
-                accessory = discord.ui.Button(label=" ", url="https://discord.com", disabled=True)
-
-            # --- Section Construction ---
-            display_text = f"## {title}\n{content}" if title else content
-            # A Section must hold a TextDisplay object.
-            section = ui.Section(ui.TextDisplay(display_text), accessory=accessory)
-
-            # --- Container Construction ---
-            container_items = [section]
-            
-            if show_separator:
-                # Separators add visual spacing between items.
-                container_items.append(ui.Separator(spacing=discord.SeparatorSpacing.small))
+                e.set_thumbnail(url=itx.user.display_avatar.url)
 
             if media_url:
-                # MediaGallery can contain up to 10 MediaGalleryItems.
-                gallery = ui.MediaGallery()
-                gallery.add_item(media=media_url) 
-                container_items.append(gallery)
+                e.set_image(url=media_url)
 
-            hex_val = self.format_hex(accent_color)
-            clr = discord.Colour.from_str(hex_val) if hex_val else None
-            
-            # Container wraps items and adds the side accent colour.
-            container = ui.Container(*container_items, accent_colour=clr)
-            view.add_item(container)
+            # Used to space out container items. Embeds do that themselves, so
+            # it's a divider line now.
+            if show_separator and content:
+                e.description = f"{content}\n\n───────────────"
 
-            # --- Bottom Action Row ---
+            # Embeds can't hold buttons, so a link button still needs a View.
+            view = None
             if button_name and button_link:
-                row = ui.ActionRow()
-                row.add_item(discord.ui.Button(label=button_name, url=button_link))
-                view.add_item(row)
+                view = ui.View(timeout=None)
+                view.add_item(discord.ui.Button(label=button_name, url=button_link))
 
-            # Send via LayoutView.
-            await channel.send(view=view)
-            await itx.followup.send(f"Message container sent to {channel.mention}")
+            await channel.send(embed=e, view=view)
+            await itx.followup.send(f"Message sent to {channel.mention}")
 
         except Exception as e:
             logger.error(f"Message Send Error: {e}")

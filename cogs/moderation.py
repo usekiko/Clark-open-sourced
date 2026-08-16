@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands, ui
 import datetime
 
-from utils import styled_view, Colors, ensure_bigint_columns
+from utils import embed, Colors, ensure_bigint_columns
 
 
 class DurationTransformer(app_commands.Transformer):
@@ -71,10 +71,8 @@ class Moderation(commands.Cog):
                     )
                 """)
 
-                # Installs predating the BIGINT schema still have these as VARCHAR,
-                # and CREATE TABLE IF NOT EXISTS above will never fix that. Snowflakes
-                # are passed as ints, so every command routed through log_case dies
-                # with "expected str, got int" until the columns are converted.
+                # Old installs still have these as VARCHAR and the DDL above won't
+                # fix it, so every command through log_case dies until they convert.
                 for table, columns in (
                     ("mod_logs",          ("guild_id", "moderator_id", "user_id")),
                     ("mod_case_counters", ("guild_id",)),
@@ -138,7 +136,7 @@ class Moderation(commands.Cog):
 
     async def _send_dm(self, user: discord.User, title: str, description: str) -> None:
         try:
-            await user.send(view=styled_view(title, description))
+            await user.send(embed=embed(title, description))
         except (discord.Forbidden, Exception) as e:
             print(f"{Colors.RED}[ERROR]         DM to {user} failed: {e}{Colors.RESET}")
 
@@ -175,7 +173,7 @@ class Moderation(commands.Cog):
         err = self._check_target(member, interaction, self.bot.user)
         if err:
             return await interaction.response.send_message(
-                view=styled_view("Access Denied", err), ephemeral=True
+                embed=embed("Access Denied", err), ephemeral=True
             )
         try:
             case_id = await self.log_case(interaction, "KICK", member, reason)
@@ -186,11 +184,11 @@ class Moderation(commands.Cog):
             )
             await member.kick(reason=f"Case #{case_id}: {reason}")
             await interaction.response.send_message(
-                view=styled_view("Member Kicked", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
+                embed=embed("Member Kicked", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
             )
         except discord.Forbidden:
             await interaction.response.send_message(
-                view=styled_view("Missing Permissions", "'Kick Members' permission required."), ephemeral=True
+                embed=embed("Missing Permissions", "'Kick Members' permission required."), ephemeral=True
             )
 
     @ban_group.command(name="add", description="Permanently bans a user.")
@@ -206,7 +204,7 @@ class Moderation(commands.Cog):
         err    = self._check_target(member or user, interaction, self.bot.user)
         if err:
             return await interaction.response.send_message(
-                view=styled_view("Protected User", err), ephemeral=True
+                embed=embed("Protected User", err), ephemeral=True
             )
         try:
             case_id = await self.log_case(interaction, "BAN", user, reason)
@@ -217,11 +215,11 @@ class Moderation(commands.Cog):
             )
             await interaction.guild.ban(user, reason=f"Case #{case_id}: {reason}", delete_message_days=delete_days)
             await interaction.response.send_message(
-                view=styled_view("Member Banned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
+                embed=embed("Member Banned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
             )
         except discord.Forbidden:
             await interaction.response.send_message(
-                view=styled_view("Missing Permissions", "'Ban Members' permission required."), ephemeral=True
+                embed=embed("Missing Permissions", "'Ban Members' permission required."), ephemeral=True
             )
 
     @ban_group.command(name="remove", description="Removes a ban from a user.")
@@ -237,15 +235,15 @@ class Moderation(commands.Cog):
                 f"**Moderator:** {interaction.user.mention}\n**Reason:** {reason}\n**Case ID:** #{case_id}\n\nYou can now rejoin.",
             )
             await interaction.response.send_message(
-                view=styled_view("Member Unbanned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
+                embed=embed("Member Unbanned", f"User: {user.name}\nReason: {reason}\nCase ID: #{case_id}")
             )
         except discord.NotFound:
             await interaction.response.send_message(
-                view=styled_view("Not Banned", "User is not currently banned."), ephemeral=True
+                embed=embed("Not Banned", "User is not currently banned."), ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                view=styled_view("Error", str(e)), ephemeral=True
+                embed=embed("Error", str(e)), ephemeral=True
             )
 
     @tempban_group.command(name="add", description="Temporarily bans a user.")
@@ -260,7 +258,7 @@ class Moderation(commands.Cog):
         err = self._check_target(user, interaction, self.bot.user)
         if err:
             return await interaction.response.send_message(
-                view=styled_view("Protected User", err), ephemeral=True
+                embed=embed("Protected User", err), ephemeral=True
             )
         try:
             end_time      = discord.utils.utcnow() + duration
@@ -278,13 +276,13 @@ class Moderation(commands.Cog):
             )
             await interaction.guild.ban(user, reason=f"Case #{case_id} (Temp): {reason}")
             await interaction.response.send_message(
-                view=styled_view(
+                embed=embed(
                     "Temporary Ban Applied",
                     f"User: {user.name}\nExpires: <t:{expires_at_ts}:F>\nCase ID: #{case_id}",
                 )
             )
         except Exception as e:
-            await interaction.response.send_message(view=styled_view("Error", str(e)), ephemeral=True)
+            await interaction.response.send_message(embed=embed("Error", str(e)), ephemeral=True)
 
     @tempban_group.command(name="remove", description="Removes a temporary ban.")
     @app_commands.checks.has_permissions(ban_members=True)
@@ -306,7 +304,7 @@ class Moderation(commands.Cog):
         err = self._check_target(member, interaction, self.bot.user)
         if err:
             return await interaction.response.send_message(
-                view=styled_view("Protected User", err), ephemeral=True
+                embed=embed("Protected User", err), ephemeral=True
             )
         try:
             end_time      = discord.utils.utcnow() + duration
@@ -324,13 +322,13 @@ class Moderation(commands.Cog):
             )
             await member.timeout(duration, reason=f"Case #{case_id}: {reason}")
             await interaction.response.send_message(
-                view=styled_view(
+                embed=embed(
                     "Member Muted",
                     f"User: {member.name}\nExpires: <t:{expires_at_ts}:F>\nCase ID: #{case_id}",
                 )
             )
         except Exception as e:
-            await interaction.response.send_message(view=styled_view("Error", str(e)), ephemeral=True)
+            await interaction.response.send_message(embed=embed("Error", str(e)), ephemeral=True)
 
     @mute_group.command(name="remove", description="Removes a user's timeout.")
     @app_commands.checks.has_permissions(moderate_members=True)
@@ -339,23 +337,23 @@ class Moderation(commands.Cog):
     ):
         if not member.is_timed_out():
             return await interaction.response.send_message(
-                view=styled_view("Not Muted", "User does not have an active timeout."), ephemeral=True
+                embed=embed("Not Muted", "User does not have an active timeout."), ephemeral=True
             )
         try:
             case_id = await self.log_case(interaction, "UNMUTE", member, reason)
             await member.timeout(None, reason=f"Case #{case_id}: {reason}")
             await interaction.response.send_message(
-                view=styled_view("Member Unmuted", f"User: {member.name}\nCase ID: #{case_id}")
+                embed=embed("Member Unmuted", f"User: {member.name}\nCase ID: #{case_id}")
             )
         except Exception as e:
-            await interaction.response.send_message(view=styled_view("Error", str(e)), ephemeral=True)
+            await interaction.response.send_message(embed=embed("Error", str(e)), ephemeral=True)
 
     @warn_group.command(name="add", description="Issues a warning to a user.")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn_add(self, interaction: discord.Interaction, member: discord.Member, *, reason: str):
         if member.bot or member == interaction.guild.owner or member == interaction.user:
             return await interaction.response.send_message(
-                view=styled_view("Invalid Target", "Cannot moderate this user."), ephemeral=True
+                embed=embed("Invalid Target", "Cannot moderate this user."), ephemeral=True
             )
         case_id = await self.log_case(interaction, "WARN", member, reason)
         await self._send_dm(
@@ -364,7 +362,7 @@ class Moderation(commands.Cog):
             f"**Reason:** {reason}\n**Case ID:** #{case_id}",
         )
         await interaction.response.send_message(
-            view=styled_view("Warning Issued", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
+            embed=embed("Warning Issued", f"User: {member.name}\nReason: {reason}\nCase ID: #{case_id}")
         )
 
     @warn_group.command(name="remove", description="Deletes a warning by Case ID.")
@@ -377,11 +375,11 @@ class Moderation(commands.Cog):
             )
             if not record or record["action_type"] != "WARN":
                 return await interaction.response.send_message(
-                    view=styled_view("Not Found", "Warning case does not exist."), ephemeral=True
+                    embed=embed("Not Found", "Warning case does not exist."), ephemeral=True
                 )
             await conn.execute("DELETE FROM mod_logs WHERE log_id = $1", record["log_id"])
         await interaction.response.send_message(
-            view=styled_view("Warning Removed", f"Case #{case_id} removed from record.")
+            embed=embed("Warning Removed", f"Case #{case_id} removed from record.")
         )
 
     @app_commands.command(name="purge", description="Deletes messages in the current channel.")
@@ -390,7 +388,7 @@ class Moderation(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         deleted = await interaction.channel.purge(limit=amount)
         await interaction.followup.send(
-            view=styled_view("Messages Purged", f"{len(deleted)} messages deleted."), ephemeral=True
+            embed=embed("Messages Purged", f"{len(deleted)} messages deleted."), ephemeral=True
         )
 
     @slowmode_group.command(name="apply", description="Sets channel slowmode.")
@@ -398,7 +396,7 @@ class Moderation(commands.Cog):
     async def slowmode_apply(self, interaction: discord.Interaction, seconds: app_commands.Range[int, 0, 21600]):
         await interaction.channel.edit(slowmode_delay=seconds)
         await interaction.response.send_message(
-            view=styled_view("Slowmode Configured", f"Rate limit set to {seconds}s.")
+            embed=embed("Slowmode Configured", f"Rate limit set to {seconds}s.")
         )
 
     @lock_group.command(name="apply", description="Locks the current channel.")
@@ -409,7 +407,7 @@ class Moderation(commands.Cog):
         overwrite.send_messages = False
         await interaction.channel.set_permissions(target, overwrite=overwrite)
         await interaction.response.send_message(
-            view=styled_view("Channel Locked", f"Send messages revoked for {target.name}.")
+            embed=embed("Channel Locked", f"Send messages revoked for {target.name}.")
         )
 
     @lock_group.command(name="remove", description="Unlocks the current channel.")
@@ -420,7 +418,7 @@ class Moderation(commands.Cog):
         overwrite.send_messages = None
         await interaction.channel.set_permissions(target, overwrite=overwrite)
         await interaction.response.send_message(
-            view=styled_view("Channel Unlocked", f"Send messages restored for {target.name}.")
+            embed=embed("Channel Unlocked", f"Send messages restored for {target.name}.")
         )
 
     @role_group.command(name="add", description="Adds a role to a user.")
@@ -428,32 +426,32 @@ class Moderation(commands.Cog):
     async def role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
         if role >= interaction.guild.me.top_role:
             return await interaction.response.send_message(
-                view=styled_view("Hierarchy Error", "Cannot assign a role equal or above my highest role."),
+                embed=embed("Hierarchy Error", "Cannot assign a role equal or above my highest role."),
                 ephemeral=True,
             )
         try:
             await member.add_roles(role)
             await interaction.response.send_message(
-                view=styled_view("Role Assigned", f"{role.name} assigned to {member.name}.")
+                embed=embed("Role Assigned", f"{role.name} assigned to {member.name}.")
             )
         except Exception as e:
-            await interaction.response.send_message(view=styled_view("Error", str(e)), ephemeral=True)
+            await interaction.response.send_message(embed=embed("Error", str(e)), ephemeral=True)
 
     @role_group.command(name="remove", description="Removes a role from a user.")
     @app_commands.checks.has_permissions(manage_roles=True)
     async def role_remove(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
         if role >= interaction.guild.me.top_role:
             return await interaction.response.send_message(
-                view=styled_view("Hierarchy Error", "Cannot remove a role equal or above my highest role."),
+                embed=embed("Hierarchy Error", "Cannot remove a role equal or above my highest role."),
                 ephemeral=True,
             )
         try:
             await member.remove_roles(role)
             await interaction.response.send_message(
-                view=styled_view("Role Removed", f"{role.name} removed from {member.name}.")
+                embed=embed("Role Removed", f"{role.name} removed from {member.name}.")
             )
         except Exception as e:
-            await interaction.response.send_message(view=styled_view("Error", str(e)), ephemeral=True)
+            await interaction.response.send_message(embed=embed("Error", str(e)), ephemeral=True)
 
     @app_commands.command(name="history", description="Displays moderation history for a member.")
     @app_commands.checks.has_permissions(moderate_members=True)
@@ -485,24 +483,20 @@ class Moderation(commands.Cog):
                 )
             history_content = "\n".join(lines)
 
-        main_text  = ui.TextDisplay(f"**Moderation History for {member.name}**\n\nShowing last 10 cases.")
-        sep        = ui.Separator(spacing=discord.SeparatorSpacing.large, visible=True)
-        body       = ui.TextDisplay(history_content)
-        container  = ui.Container(main_text, sep, body)
-        view       = ui.LayoutView()
-        view.add_item(container)
-        await interaction.followup.send(view=view)
+        e = embed(f"Moderation History for {member.name}", history_content)
+        e.set_footer(text="Showing last 10 cases.")
+        await interaction.followup.send(embed=e)
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
             description = "You do not have the required permissions."
         else:
             description = str(error)
-        view = styled_view("Operation Failed", description)
+        e = embed("Operation Failed", description)
         if not interaction.response.is_done():
-            await interaction.response.send_message(view=view, ephemeral=True)
+            await interaction.response.send_message(embed=e, ephemeral=True)
         else:
-            await interaction.followup.send(view=view, ephemeral=True)
+            await interaction.followup.send(embed=e, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

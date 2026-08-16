@@ -3,107 +3,55 @@ from discord.ext import commands
 from discord import ui
 import discord.app_commands as app_commands
 
-from utils import Colors
+from utils import Colors, embed
+
+LINKS = {
+    "Website": "https://clarklabs.cc/",
+    "Privacy Policy": "https://clarklabs.cc/privacy-policy",
+    "Terms of Service": "https://clarklabs.cc/terms-of-service",
+    "Command List": "https://clarklabs.cc/commands",
+}
+SUPPORT_SERVER = "https://discord.gg/V3DBj8fXzu"
+TOPGG = "https://top.gg/bot/1422636332454514779"
+
+
+def link_row(**links) -> ui.View:
+    """Row of link buttons. Embeds can't hold buttons so this rides alongside."""
+    view = ui.View(timeout=None)
+    for label, url in links.items():
+        view.add_item(discord.ui.Button(label=label, style=discord.ButtonStyle.link, url=url))
+    return view
+
 
 class ExampleCog(commands.Cog):
-    
-    BOT_OWNER_ID = 465618379642896394 
-    
+
     def __init__(self, bot):
         self.bot = bot
-        self.synced_commands_cache = {}
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        await self.bot.wait_until_ready()
-        
-        self.synced_commands_cache = {}
-        
-        for command in self.bot.tree.walk_commands():
-            cmd_id = getattr(command, 'id', None)
-            
-            if cmd_id:
-                if not command.parent:
-                    self.synced_commands_cache[command.name] = cmd_id
-                else:
-                    self.synced_commands_cache[command.parent.name] = cmd_id
-        
-        print(f"{Colors.CYAN}[OTHER]         [WelcomeMsgs] Cached {len(self.synced_commands_cache)} unique command IDs.{Colors.RESET}")
-
-    def create_welcome_view(self):
-        header = ui.TextDisplay("**Hi, I am Clark!**")
-        sep1 = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        intro = ui.TextDisplay(
-            "I require appropriate permissions to function properly. "
-            "These are essential for moderation and other features to work effectively."
+    def welcome_embed(self) -> discord.Embed:
+        """Posted in the server when Clark is added."""
+        e = embed(
+            "Hi, I am Clark!",
+            "I need the right permissions to work properly - moderation and the rest "
+            "rely on them.",
         )
-        
-        commands_header = ui.TextDisplay("**Commands**")
-        sep2 = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        commands_body = ui.TextDisplay(
-            "Use </help:0> to see all available commands, or visit [clarklabs.cc/commands](https://clarklabs.cc/commands)"
+        e.add_field(
+            name="Commands",
+            value=f"Use `/help` to see everything, or visit [clarklabs.cc]({LINKS['Command List']}).",
+            inline=False,
         )
-        
-        purpose_header = ui.TextDisplay("**Purpose**")
-        sep3 = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        purpose_body = ui.TextDisplay(
-            "AI-powered assistant for server management, including moderation, leveling, economy, and automation features."
+        e.add_field(
+            name="Purpose",
+            value="AI chatbot plus moderation, automod, logging, economy and welcome messages.",
+            inline=False,
         )
-        
-        data_header = ui.TextDisplay("**Data Storage**")
-        sep4 = ui.Separator(spacing=discord.SeparatorSpacing.small)
-        data_body = ui.TextDisplay(
-            "View our [Privacy Policy](https://clarklabs.cc/privacy-policy). "
-            "Only essential operational data is stored."
+        e.add_field(
+            name="Data Storage",
+            value=f"Only what's needed to run. See the [Privacy Policy]({LINKS['Privacy Policy']}).",
+            inline=False,
         )
-        
-        footer = ui.TextDisplay(
-            "Restarts indicate feature updates. "
-            "Join the [Support Server](https://discord.gg/V3DBj8fXzu) for assistance."
-        )
-        
-        container = ui.Container(
-            header, sep1, intro,
-            ui.Separator(spacing=discord.SeparatorSpacing.large),
-            commands_header, sep2, commands_body,
-            ui.Separator(spacing=discord.SeparatorSpacing.large),
-            purpose_header, sep3, purpose_body,
-            ui.Separator(spacing=discord.SeparatorSpacing.large),
-            data_header, sep4, data_body,
-            ui.Separator(spacing=discord.SeparatorSpacing.large),
-            footer
-        )
-        
-        action_row = ui.ActionRow().add_item(
-            discord.ui.Button(
-                label="Website",
-                style=discord.ButtonStyle.link,
-                url="https://clarklabs.cc/"
-            )
-        ).add_item(
-            discord.ui.Button(
-                label="Privacy Policy",
-                style=discord.ButtonStyle.link,
-                url="https://clarklabs.cc/privacy-policy"
-            )
-        ).add_item(
-            discord.ui.Button(
-                label="Terms of Service",
-                style=discord.ButtonStyle.link,
-                url="https://clarklabs.cc/terms-of-service"
-            )
-        ).add_item(
-            discord.ui.Button(
-                label="Command List",
-                style=discord.ButtonStyle.link,
-                url="https://clarklabs.cc/commands"
-            )
-        )
-        
-        view = ui.LayoutView()
-        view.add_item(container)
-        view.add_item(action_row)
-        return view
+        e.set_footer(text="Restarts mean feature updates.")
+        return e
 
     async def get_inviter(self, guild: discord.Guild) -> discord.Member | None:
         """Find who invited the bot using audit logs."""
@@ -118,53 +66,25 @@ class ExampleCog(commands.Cog):
     async def send_dm_to_inviter(self, inviter: discord.User, guild: discord.Guild):
         """Send professional welcome DM to the person who invited the bot."""
         try:
-            # Build the DM content
-            header = ui.TextDisplay(f"**Thanks for adding {self.bot.user.name}!**")
-            sep = ui.Separator(spacing=discord.SeparatorSpacing.small)
-            greeting = ui.TextDisplay(f"Hi {inviter.name}! I'm ready to help manage your server **{guild.name}** with AI-powered moderation, leveling, economy and more.")
-            
-            quick_start_header = ui.TextDisplay("**Quick Start**")
-            quick_start_body = ui.TextDisplay(
-                "Use </clark mode:0> to change AI personality\n"
-                "Use </level config:0> to enable leveling\n"
-                "Use </help:0> to see all commands"
+            e = embed(
+                f"Thanks for adding {self.bot.user.name}!",
+                f"Hi {inviter.name}! I'm ready to help run **{guild.name}**.",
             )
-            
-            important_header = ui.TextDisplay("**Important**")
-            important_body = ui.TextDisplay("Make sure I have a role **higher** than the roles you want me to manage!")
-            
-            help_header = ui.TextDisplay("**Need Help?**")
-            help_body = ui.TextDisplay("Use </help:0> in your server or join our support server.")
-            
-            container = ui.Container(
-                header, sep, greeting, 
-                ui.Separator(spacing=discord.SeparatorSpacing.large),
-                quick_start_header, quick_start_body,
-                ui.Separator(spacing=discord.SeparatorSpacing.large),
-                important_header, important_body,
-                ui.Separator(spacing=discord.SeparatorSpacing.large),
-                help_header, help_body
+            e.add_field(
+                name="Quick Start",
+                value="`/clark mode` to change the AI personality\n"
+                      "`/automod configure` to set up filtering\n"
+                      "`/help` to see everything",
+                inline=False,
             )
-            
-            action_row = ui.ActionRow().add_item(
-                discord.ui.Button(
-                    label="Support Server",
-                    style=discord.ButtonStyle.link,
-                    url="https://discord.gg/V3DBj8fXzu"
-                )
-            ).add_item(
-                discord.ui.Button(
-                    label="Vote on Top.gg",
-                    style=discord.ButtonStyle.link,
-                    url="https://top.gg/bot/1422636332454514779"
-                )
+            e.add_field(
+                name="Important",
+                value="Give me a role **above** the roles you want me to manage.",
+                inline=False,
             )
-            
-            view = ui.LayoutView()
-            view.add_item(container)
-            view.add_item(action_row)
-            
-            await inviter.send(view=view)
+            e.add_field(name="Need Help?", value="Run `/help`, or join the support server.", inline=False)
+
+            await inviter.send(embed=e, view=link_row(**{'Support Server': SUPPORT_SERVER, 'Vote on Top.gg': TOPGG}))
             print(f"{Colors.GREEN}[SUCCESS]       Sent welcome DM to {inviter.name} ({inviter.id}){Colors.RESET}")
         except discord.Forbidden:
             print(f"{Colors.YELLOW}[WARN]          Could not send DM to {inviter.name} - DMs disabled{Colors.RESET}")
@@ -192,10 +112,10 @@ class ExampleCog(commands.Cog):
             print(f"{Colors.RED}[ERROR]         Could not find a suitable channel in {guild.name} to send welcome message{Colors.RESET}")
             return
         
-        view = self.create_welcome_view()
+        e = self.welcome_embed()
         
         try:
-            await channel.send(view=view)
+            await channel.send(embed=e, view=link_row(**LINKS))
             print(f"{Colors.GREEN}[SUCCESS]       Sent welcome message to {guild.name} (ID: {guild.id}){Colors.RESET}")
         except discord.Forbidden:
             print(f"{Colors.RED}[ERROR]         Missing permissions to send welcome message in {guild.name}{Colors.RESET}")
