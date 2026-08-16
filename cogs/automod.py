@@ -9,6 +9,8 @@ from utils import styled_view
 
 logger = logging.getLogger("AutoModCog")
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 class AutoMod(commands.GroupCog, name="automod"):
     def __init__(self, bot):
         self.bot = bot
@@ -37,7 +39,7 @@ class AutoMod(commands.GroupCog, name="automod"):
         timeout_duration="Minutes to timeout offenders (0 for none)",
         log_channel="Channel where AutoMod alerts should be sent"
     )
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def configure(
         self, 
         itx: discord.Interaction, 

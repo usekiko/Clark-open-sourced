@@ -5,6 +5,8 @@ import logging
 
 logger = logging.getLogger("MessageSender")
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 class MessageSender(commands.GroupCog, name="message"):
     def __init__(self, bot):
         self.bot = bot
@@ -39,7 +41,7 @@ class MessageSender(commands.GroupCog, name="message"):
             app_commands.Choice(name="Invisible/None (Dummy Button)", value="none")
         ]
     )
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def send_message(
         self, 
         itx: discord.Interaction, 

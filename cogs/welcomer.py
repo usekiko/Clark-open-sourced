@@ -5,6 +5,8 @@ import logging
 
 logger = logging.getLogger("WelcomeCog")
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 class Welcome(commands.GroupCog, name="welcome"):
     def __init__(self, bot):
         self.bot = bot
@@ -40,7 +42,7 @@ class Welcome(commands.GroupCog, name="welcome"):
         channel="Where to send the message",
         message="Tags: {user} (ping), {servername}. Use \\n for new lines."
     )
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def setup(self, itx: discord.Interaction, channel: discord.TextChannel, *, message: str):
         await itx.response.defer(ephemeral=True)
         try:

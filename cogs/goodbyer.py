@@ -5,6 +5,8 @@ import logging
 
 logger = logging.getLogger("GoodbyeCog")
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 class Goodbye(commands.GroupCog, name="goodbye"):
     def __init__(self, bot):
         self.bot = bot
@@ -37,7 +39,7 @@ class Goodbye(commands.GroupCog, name="goodbye"):
         channel="Where to send the message",
         message="Tags: {user} (name), {servername}. Use \\n for new lines."
     )
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def setup(self, itx: discord.Interaction, channel: discord.TextChannel, *, message: str):
         await itx.response.defer(ephemeral=True)
         try:

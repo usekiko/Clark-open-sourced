@@ -7,6 +7,8 @@ import aiohttp
 
 logger = logging.getLogger("ThreadCog")
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 class ThreadGroup(commands.GroupCog, name="thread"):
     def __init__(self, bot):
         self.bot = bot
@@ -31,7 +33,7 @@ class ThreadGroup(commands.GroupCog, name="thread"):
 
     @app_commands.command(name="create", description="Enable auto-threads for images in a channel")
     @app_commands.describe(channel="The channel to enable threads for")
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def create_thread_channel(self, itx: discord.Interaction, channel: discord.TextChannel):
         await itx.response.defer(ephemeral=True)
         
@@ -48,7 +50,7 @@ class ThreadGroup(commands.GroupCog, name="thread"):
 
     @app_commands.command(name="delete", description="Disable auto-threads for a channel")
     @app_commands.describe(channel="The channel to disable threads for")
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def delete_thread_channel(self, itx: discord.Interaction, channel: discord.TextChannel):
         await itx.response.defer(ephemeral=True)
         
@@ -63,7 +65,7 @@ class ThreadGroup(commands.GroupCog, name="thread"):
             await itx.followup.send(f"Error: {e}")
 
     @app_commands.command(name="list", description="List all active thread channels in this server")
-    @commands.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def list_threads(self, itx: discord.Interaction):
         await itx.response.defer(ephemeral=True)
         
