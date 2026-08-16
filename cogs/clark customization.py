@@ -77,6 +77,17 @@ class Settings(commands.Cog):
             return False
         return True
 
+    def _invalidate_ai_gate(self, guild_id: int):
+        """Drop only the cached on/off + channel-whitelist + persona lookup.
+
+        The AI cog caches that for a minute, so without this a /clark on, off or
+        channel change wouldn't take effect until the entry expired. Deliberately
+        leaves the conversation context alone — toggling the chatbot shouldn't
+        also wipe what Clark remembers."""
+        cog = self.bot.get_cog("AIChatbot")
+        if cog is not None and hasattr(cog, "invalidate_config"):
+            cog.invalidate_config(guild_id)
+
     def _invalidate_ai_cache(self, guild_id: int):
         """The AI cog caches persona settings for a minute; drop it so a staff
         change applies to the very next message instead of a minute later."""
@@ -89,7 +100,7 @@ class Settings(commands.Cog):
         if hasattr(cog, "invalidate_conversations"):
             cog.invalidate_conversations(guild_id)
 
-    async def _clear_server_history(self, guild_id: str) -> int:
+    async def _clear_server_history(self, guild_id: int) -> int:
         """Clark's context is shared per channel, so a persona change resets the
         whole server's conversation, not just the staff member who ran the command.
         Rows are archived rather than deleted so analytics keep their data.
@@ -121,10 +132,10 @@ class Settings(commands.Cog):
                 await conn.execute(
                     "INSERT INTO servers (guild_id, guild_name, clark_mode, custom_instruction) "
                     "VALUES ($1, $2, $3, NULL) ON CONFLICT (guild_id) DO UPDATE SET clark_mode=$3, custom_instruction=NULL",
-                    str(interaction.guild.id), interaction.guild.name, mode
+                    interaction.guild.id, interaction.guild.name, mode
                 )
             
-            await self._clear_server_history(str(interaction.guild.id))
+            await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
             view = self._create_styled_view('SUCCESS', "AI Behaviour Updated", f"Personality set to: {mode.capitalize()}\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
@@ -146,10 +157,10 @@ class Settings(commands.Cog):
                 await conn.execute(
                     "INSERT INTO servers (guild_id, guild_name, custom_instruction, clark_mode) "
                     "VALUES ($1, $2, $3, NULL) ON CONFLICT (guild_id) DO UPDATE SET custom_instruction=$3, clark_mode=NULL",
-                    str(interaction.guild.id), interaction.guild.name, instruction
+                    interaction.guild.id, interaction.guild.name, instruction
                 )
             
-            await self._clear_server_history(str(interaction.guild.id))
+            await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
             
             view = self._create_styled_view('SUCCESS', "Custom Instruction Set", "New instruction configured.\nConversation history cleared.", interaction)
@@ -165,10 +176,10 @@ class Settings(commands.Cog):
             async with self.bot.db_pool.acquire() as conn:
                 await conn.execute(
                     "UPDATE servers SET custom_instruction = NULL, clark_mode = 'friendly' WHERE guild_id = $1",
-                    str(interaction.guild.id)
+                    interaction.guild.id
                 )
             
-            await self._clear_server_history(str(interaction.guild.id))
+            await self._clear_server_history(interaction.guild.id)
             self._invalidate_ai_cache(interaction.guild.id)
             view = self._create_styled_view('SUCCESS', "Settings Reset", "Custom instructions removed.\nDefault behaviour restored.\nConversation history cleared.", interaction)
             await interaction.response.send_message(view=view, ephemeral=True)
@@ -181,7 +192,7 @@ class Settings(commands.Cog):
         if not await self._check_db_ready(interaction): return
         await interaction.response.defer(ephemeral=True)
         try:
-            cleared = await self._clear_server_history(str(interaction.guild.id))
+            cleared = await self._clear_server_history(interaction.guild.id)
             # Context also lives in RAM, so archiving rows alone would leave
             # Clark still remembering everything until the cache turned over.
             self._invalidate_ai_cache(interaction.guild.id)
@@ -201,7 +212,8 @@ class Settings(commands.Cog):
     async def chatbot_on(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, TRUE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=TRUE", str(interaction.guild.id), interaction.guild.name)
+            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, TRUE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=TRUE", interaction.guild.id, interaction.guild.name)
+        self._invalidate_ai_gate(interaction.guild.id)
         view = self._create_styled_view('SUCCESS', "AI Responses Enabled", "Clark will now respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -210,7 +222,8 @@ class Settings(commands.Cog):
     async def chatbot_off(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, FALSE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=FALSE", str(interaction.guild.id), interaction.guild.name)
+            await conn.execute("INSERT INTO servers (guild_id, guild_name, chatbot_enabled) VALUES ($1, $2, FALSE) ON CONFLICT (guild_id) DO UPDATE SET chatbot_enabled=FALSE", interaction.guild.id, interaction.guild.name)
+        self._invalidate_ai_gate(interaction.guild.id)
         view = self._create_styled_view('SUCCESS', "AI Responses Disabled", "Clark will no longer respond to mentions.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -219,7 +232,8 @@ class Settings(commands.Cog):
     async def add_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            await conn.execute("INSERT INTO allowed_channels (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", str(interaction.guild.id), channel.id)
+            await conn.execute("INSERT INTO allowed_channels (guild_id, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", interaction.guild.id, channel.id)
+        self._invalidate_ai_gate(interaction.guild.id)
         view = self._create_styled_view('SUCCESS', "Channel Whitelisted", f"{channel.mention} added to allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -228,7 +242,8 @@ class Settings(commands.Cog):
     async def remove_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1 AND channel_id = $2", str(interaction.guild.id), channel.id)
+            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1 AND channel_id = $2", interaction.guild.id, channel.id)
+        self._invalidate_ai_gate(interaction.guild.id)
         view = self._create_styled_view('SUCCESS', "Channel Removed", f"{channel.mention} removed from allowed channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -237,7 +252,8 @@ class Settings(commands.Cog):
     async def clear_channels(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1", str(interaction.guild.id))
+            await conn.execute("DELETE FROM allowed_channels WHERE guild_id = $1", interaction.guild.id)
+        self._invalidate_ai_gate(interaction.guild.id)
         view = self._create_styled_view('SUCCESS', "Channel Restrictions Cleared", "Clark will respond in all channels.", interaction)
         await interaction.response.send_message(view=view, ephemeral=True)
 
@@ -246,7 +262,7 @@ class Settings(commands.Cog):
     async def list_channels(self, interaction: discord.Interaction):
         if not await self._check_db_ready(interaction): return
         async with self.bot.db_pool.acquire() as conn:
-            res = await conn.fetch("SELECT channel_id FROM allowed_channels WHERE guild_id = $1", str(interaction.guild.id))
+            res = await conn.fetch("SELECT channel_id FROM allowed_channels WHERE guild_id = $1", interaction.guild.id)
         
         if not res: 
             view = self._create_styled_view('SUCCESS', "Channel Access", "No restrictions configured. Clark responds in all channels.", interaction)
