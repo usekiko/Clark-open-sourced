@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands, ui
 import datetime
 
-from utils import styled_view, Colors
+from utils import styled_view, Colors, ensure_bigint_columns
 
 
 class DurationTransformer(app_commands.Transformer):
@@ -70,6 +70,21 @@ class Moderation(commands.Cog):
                         counter  INT    NOT NULL DEFAULT 0
                     )
                 """)
+
+                # Installs predating the BIGINT schema still have these as VARCHAR,
+                # and CREATE TABLE IF NOT EXISTS above will never fix that. Snowflakes
+                # are passed as ints, so every command routed through log_case dies
+                # with "expected str, got int" until the columns are converted.
+                for table, columns in (
+                    ("mod_logs",          ("guild_id", "moderator_id", "user_id")),
+                    ("mod_case_counters", ("guild_id",)),
+                ):
+                    migrated = await ensure_bigint_columns(conn, table, columns)
+                    if migrated:
+                        print(
+                            f"{Colors.YELLOW}[MIGRATE]      {table}: "
+                            f"{', '.join(migrated)} → BIGINT{Colors.RESET}"
+                        )
             print(f"{Colors.GREEN}[SUCCESS]      cogs.moderation.py has successfully created all tables{Colors.RESET}")
         except Exception as e:
             print(f"{Colors.RED}[ERROR]         Moderation table creation failed: {e}{Colors.RESET}")
