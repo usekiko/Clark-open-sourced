@@ -153,12 +153,32 @@ _MASKED_LINK = re.compile(r"\[([^\]\n]{0,100})\]\(\s*<?[^)\s]*>?\s*\)")
 # Headers render huge in Discord. A few of them fill a screen.
 _MD_HEADER = re.compile(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+")
 _CUSTOM_EMOJI = re.compile(r"<a?:\w{2,32}:\d{15,25}>")
+# Clark doesn't do emojis, full stop - this is the belt to the prompt's braces.
+_UNICODE_EMOJI = re.compile(
+    "["
+    "\U0001F1E6-\U0001F1FF"  # regional indicators (flag letters)
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F680-\U0001F6FF"  # transport & map symbols
+    "\U0001F700-\U0001F7FF"  # alchemical / extended geometric shapes
+    "\U0001F900-\U0001F9FF"  # supplemental symbols & pictographs
+    "\U0001FA00-\U0001FAFF"  # symbols & pictographs extended-A, chess
+    "\U00002600-\U000026FF"  # misc symbols
+    "\U00002700-\U000027BF"  # dingbats
+    "\U00002B00-\U00002BFF"  # misc symbols and arrows
+    "\U0001F000-\U0001F0FF"  # mahjong / playing cards
+    "\U0000FE0F"             # variation selector-16 (emoji presentation)
+    "\U0000200D"             # zero-width joiner (glues emoji sequences)
+    "\U000020E3"             # combining enclosing keycap
+    "]+"
+)
 _CHAR_RUN = re.compile(r"(\S)\1{5,}")
 _BLANK_RUN = re.compile(r"\n\s*\n+")
 
 # A reply can be short in characters and still eat a whole screen.
 MAX_REPLY_LINES = 5
-MAX_CUSTOM_EMOJI = 3
+# Emojis aren't Clark's voice at all, custom or otherwise - none get through.
+MAX_CUSTOM_EMOJI = 0
 
 # If any of this comes back out he's reciting his own instructions.
 _LEAK_MARKERS = (
@@ -905,6 +925,7 @@ class AIChatbot(commands.Cog):
             return match.group(0) if emoji_seen <= MAX_CUSTOM_EMOJI else ""
 
         text = _CUSTOM_EMOJI.sub(_cap_emoji, text)
+        text = _UNICODE_EMOJI.sub("", text)
 
         lines = [ln for ln in text.split("\n") if ln.strip()]
         if len(lines) > MAX_REPLY_LINES:
