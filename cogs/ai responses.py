@@ -14,7 +14,7 @@ import asyncio
 
 from utils import Colors, ensure_bigint_columns
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = "qwen/qwen3.6-27b"
 
 # Kept tight - every token counts against Groq's per-minute quota.
 HISTORY_LIMIT = 8
@@ -802,6 +802,13 @@ class AIChatbot(commands.Cog):
                     raw = await self._call_groq(merged)
                 else:
                     raise
+
+            if not raw or not raw.strip():
+                # No exception, no status code - Groq just handed back nothing.
+                # Usually the model refusing in its hidden reasoning channel and
+                # never writing a final answer, not our own filters (those run below).
+                print(f"{Colors.YELLOW}[AI] Groq returned empty content for a {MODEL} call - "
+                      f"likely a silent refusal{Colors.RESET}")
 
             names = [author_name] + [h.get('username') for h in history]
             reply = self._clean_reply(raw, names)
