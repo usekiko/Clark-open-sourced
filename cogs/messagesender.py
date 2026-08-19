@@ -24,7 +24,7 @@ class MessageSender(commands.GroupCog, name="message"):
 
     @app_commands.command(name="send", description="Send an embed or plain text to a channel")
     @app_commands.describe(
-        channel="Where to send the message",
+        channel="Where to send the message (defaults to this channel)",
         mode="Embed or Plain Text",
         content="The main message body",
         title="Embed title",
@@ -49,11 +49,11 @@ class MessageSender(commands.GroupCog, name="message"):
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def send_message(
-        self, 
-        itx: discord.Interaction, 
-        channel: discord.TextChannel,
+        self,
+        itx: discord.Interaction,
         mode: str,
         content: str,
+        channel: discord.TextChannel = None,
         title: str = None,
         thumbnail_type: str = "none",
         media_url: str = None,
@@ -65,6 +65,7 @@ class MessageSender(commands.GroupCog, name="message"):
     ):
         await itx.response.defer(ephemeral=True)
 
+        channel = channel or itx.channel
         reference = None
         if reply_to:
             match = _MESSAGE_LINK.search(reply_to)
