@@ -14,7 +14,7 @@ import asyncio
 
 from utils import Colors, ensure_bigint_columns
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = "qwen/qwen3.6-27b"
 
 # Kept tight - every token counts against Groq's per-minute quota.
 HISTORY_LIMIT = 8
