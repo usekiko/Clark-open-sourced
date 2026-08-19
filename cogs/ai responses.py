@@ -726,6 +726,7 @@ class AIChatbot(commands.Cog):
                         temperature=0.9,
                         max_tokens=MAX_REPLY_TOKENS,
                         reasoning_format="hidden",
+                        reasoning_effort="none",
                     )
                 return completion.choices[0].message.content
             except Exception as e:
