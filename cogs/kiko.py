@@ -72,6 +72,35 @@ class KikoTools(commands.Cog):
             await interaction.followup.send(f"Failed to send DM: {e}", ephemeral=True)
 
     # ------------------------------------------------------------------
+    # /kiko quit
+    # ------------------------------------------------------------------
+
+    @kiko_group.command(name="quit", description="Make Clark leave a server.")
+    @app_commands.describe(guildid="The server's ID to leave")
+    async def quit_guild(self, interaction: discord.Interaction, guildid: str):
+        if interaction.user.id != KIKO_ID:
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            gid = int(guildid)
+        except ValueError:
+            return await interaction.followup.send("Invalid guild ID — must be a number.", ephemeral=True)
+
+        guild = self.bot.get_guild(gid)
+        if guild is None:
+            return await interaction.followup.send(f"Not in a guild with ID `{guildid}`.", ephemeral=True)
+
+        name = guild.name
+        try:
+            await guild.leave()
+        except discord.HTTPException as e:
+            return await interaction.followup.send(f"Failed to leave **{name}**: {e}", ephemeral=True)
+
+        await interaction.followup.send(f"Left **{name}** (`{gid}`).", ephemeral=True)
+
+    # ------------------------------------------------------------------
     # /kiko announce
     # ------------------------------------------------------------------
 
