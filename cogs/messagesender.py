@@ -2,10 +2,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands, ui
 import logging
+import re
 
 from utils import CLARK_COLOUR
 
 logger = logging.getLogger("MessageSender")
+
+_MESSAGE_LINK = re.compile(r"discord\.com/channels/(\d+)/(\d+)/(\d+)")
 
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
@@ -30,7 +33,8 @@ class MessageSender(commands.GroupCog, name="message"):
         button_name="Label for a link button",
         button_link="The URL for the button",
         accent_color="Hex colour for the left bar",
-        show_separator="Add a divider under the text"
+        show_separator="Add a divider under the text",
+        reply_to="Link of a message in that channel to reply to"
     )
     @app_commands.choices(
         mode=[
@@ -55,15 +59,34 @@ class MessageSender(commands.GroupCog, name="message"):
         media_url: str = None,
         button_name: str = None,
         button_link: str = None,
-        accent_color: str = None, 
-        show_separator: bool = False
+        accent_color: str = None,
+        show_separator: bool = False,
+        reply_to: str = None
     ):
         await itx.response.defer(ephemeral=True)
+
+        reference = None
+        if reply_to:
+            match = _MESSAGE_LINK.search(reply_to)
+            if not match:
+                return await itx.followup.send("That doesn't look like a message link.", ephemeral=True)
+            link_guild_id, link_channel_id, link_message_id = (int(g) for g in match.groups())
+            if link_channel_id != channel.id:
+                return await itx.followup.send(
+                    "That message isn't in the channel you're sending to — a reply has to stay in the same channel.",
+                    ephemeral=True,
+                )
+            reference = discord.MessageReference(
+                message_id=link_message_id,
+                channel_id=link_channel_id,
+                guild_id=link_guild_id,
+                fail_if_not_exists=False,
+            )
 
         try:
             # 1. Plain Text Mode
             if mode == "text":
-                await channel.send(content=content)
+                await channel.send(content=content, reference=reference)
                 return await itx.followup.send("Plain text message sent.")
 
             # 2. Embed mode
@@ -91,7 +114,7 @@ class MessageSender(commands.GroupCog, name="message"):
                 view = ui.View(timeout=None)
                 view.add_item(discord.ui.Button(label=button_name, url=button_link))
 
-            await channel.send(embed=e, view=view)
+            await channel.send(embed=e, view=view, reference=reference)
             await itx.followup.send(f"Message sent to {channel.mention}")
 
         except Exception as e:
