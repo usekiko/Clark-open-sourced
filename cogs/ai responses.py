@@ -35,6 +35,10 @@ MAX_REPLY_TOKENS = 140
 MAX_REPLY_CHARS = 300
 # Hard ceiling so a hung request can't pin the typing indicator forever.
 REQUEST_TIMEOUT = 20.0
+# Fetching and reading an image takes longer than Groq's usual text speed -
+# 20s was clipping vision calls mid-request, forcing a retry-from-scratch
+# every time instead of just letting the one call finish.
+IMAGE_REQUEST_TIMEOUT = 45.0
 # Global throughput knob. Raise it on a paid tier, lower it if you see 429s.
 MAX_CONCURRENT_CALLS = int(os.getenv("AI_MAX_CONCURRENT_CALLS", "3"))
 # Conversation locks kept around for idle channels. Bounded so a bot in thousands
@@ -726,9 +730,10 @@ class AIChatbot(commands.Cog):
         resp = getattr(exc, "response", None)
         return getattr(resp, "status_code", None) if resp is not None else None
 
-    async def _call_groq(self, messages: List[Dict]) -> str:
+    async def _call_groq(self, messages: List[Dict], has_images: bool = False) -> str:
         """One completion, with backoff on the failures that are actually retryable."""
         last_exc = None
+        timeout = IMAGE_REQUEST_TIMEOUT if has_images else REQUEST_TIMEOUT
         for attempt in range(3):
             try:
                 async with self._api_gate:
@@ -739,6 +744,7 @@ class AIChatbot(commands.Cog):
                         max_tokens=MAX_REPLY_TOKENS,
                         reasoning_format="hidden",
                         reasoning_effort="none",
+                        timeout=timeout,
                     )
                 return completion.choices[0].message.content
             except Exception as e:
@@ -819,8 +825,9 @@ class AIChatbot(commands.Cog):
                 messages.append(self._system_block(reminder))
             messages.append({"role": "user", "content": self._user_content(last_turn, image_urls)})
 
+            has_images = bool(image_urls)
             try:
-                raw = await self._call_groq(messages)
+                raw = await self._call_groq(messages, has_images)
             except Exception as e:
                 # A 400 here usually means the mid-conversation system message was
                 # refused. Retry once with it merged in, and remember for next time.
@@ -829,7 +836,7 @@ class AIChatbot(commands.Cog):
                     self._inline_reminder = True
                     merged = [self._system_block(f"{self.CORE_RULES}\n{reminder}")] + messages[1:-2]
                     merged.append({"role": "user", "content": self._user_content(last_turn, image_urls)})
-                    raw = await self._call_groq(merged)
+                    raw = await self._call_groq(merged, has_images)
                 else:
                     raise
 
