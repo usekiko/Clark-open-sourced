@@ -24,6 +24,10 @@ MAX_CONTEXT_CHARS = 3000
 KEEP_ON_TRIM = 3
 # A single user message can never eat the whole window.
 MAX_USER_CHARS = 600
+# Groq's cap for qwen3.6-27b. Extra attachments past this are just dropped.
+MAX_IMAGES_PER_MESSAGE = 3
+# Groq's cap, per image.
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
 # Room for a real answer, but not an essay. The prompt does the calibration;
 # these are just the outer walls.
 MAX_REPLY_TOKENS = 140
@@ -746,10 +750,21 @@ class AIChatbot(commands.Cog):
                 raise
         raise last_exc
 
+    @staticmethod
+    def _user_content(text_block: str, image_urls: Optional[List[str]] = None):
+        """Plain string for a text-only turn, or an OpenAI-style content list
+        once there are images riding along with it."""
+        if not image_urls:
+            return text_block
+        return [{"type": "text", "text": text_block}] + [
+            {"type": "image_url", "image_url": {"url": url}} for url in image_urls
+        ]
+
     async def generate_response(self, message: str, history: List[Dict] = None,
                                 guild_id: Optional[int] = None,
                                 author: Optional[discord.abc.User] = None,
-                                config: Optional[Dict] = None) -> str:
+                                config: Optional[Dict] = None,
+                                image_urls: Optional[List[str]] = None) -> str:
         try:
             config = config if config is not None else await self.get_server_config(guild_id)
             persona = self._persona(config)
@@ -789,7 +804,7 @@ class AIChatbot(commands.Cog):
                 messages[0] = self._system_block(f"{self.CORE_RULES}\n{reminder}")
             else:
                 messages.append(self._system_block(reminder))
-            messages.append({"role": "user", "content": last_turn})
+            messages.append({"role": "user", "content": self._user_content(last_turn, image_urls)})
 
             try:
                 raw = await self._call_groq(messages)
@@ -800,7 +815,7 @@ class AIChatbot(commands.Cog):
                     print(f"{Colors.YELLOW}[AI] mid-conversation system rejected, folding reminder inline{Colors.RESET}")
                     self._inline_reminder = True
                     merged = [self._system_block(f"{self.CORE_RULES}\n{reminder}")] + messages[1:-2]
-                    merged.append({"role": "user", "content": last_turn})
+                    merged.append({"role": "user", "content": self._user_content(last_turn, image_urls)})
                     raw = await self._call_groq(merged)
                 else:
                     raise
@@ -1078,7 +1093,11 @@ class AIChatbot(commands.Cog):
                 return
 
         content = re.sub(rf'<@!?{self.bot.user.id}>', '', message.content).strip()
-        if not content and not is_dm: return
+        image_urls = [
+            a.url for a in message.attachments
+            if (a.content_type or "").startswith("image/") and a.size <= MAX_IMAGE_BYTES
+        ][:MAX_IMAGES_PER_MESSAGE]
+        if not content and not image_urls and not is_dm: return
         if not content: content = "Hello"
 
         # Every message past here costs a Groq call. Throttle silently - replying
@@ -1096,7 +1115,9 @@ class AIChatbot(commands.Cog):
                 async with message.channel.typing():
                     history = await self.get_conversation_history(message.author.id, guild_id, message.channel.id)
                     history = self.trim_context(history)
-                    ai_response = await self.generate_response(content, history, guild_id, message.author, config)
+                    ai_response = await self.generate_response(
+                        content, history, guild_id, message.author, config, image_urls,
+                    )
             except discord.Forbidden:
                 # Mentioned somewhere Clark can't type. Nothing to say, nothing to log.
                 return
